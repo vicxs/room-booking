@@ -199,7 +199,7 @@ fixture timeline-7.json <<EOF
 ]
 EOF
 
-# Work item #13 of the Spec #12: a sub-issue, closed by PR #14.
+# Work item #13 of the Spec #12 (a GitHub sub-issue of it), closed by PR #14.
 fixture issue-13.json <<'EOF'
 {"createdAt": "2026-04-01T00:00:00Z", "number": 13, "parent": {"number": 12, "title": "Administrators manage Rooms", "url": "https://github.com/acme/widgets/issues/12"}, "title": "Create a Room"}
 EOF
@@ -262,8 +262,8 @@ expect "a Revert PR and a reversion issue of the same PR count one Reversion" 0 
   "| #5 | Align the factory doc | #6, #7 | 24.0 | 18.0 | 3 | 1 |"
 [[ $output != *"#11"* && $output != *"#8"* ]] ||
   fail "a Revert PR, or the issue only it closes, is listed as an Intent. Output:"$'\n'"$output"
-expect "a sub-issue is not listed" 0 ""
-[[ $output != *"#13"* && $output != *"#14"* ]] || fail "a sub-issue is listed as an Intent. Output:"$'\n'"$output"
+expect "a Work item is not listed" 0 ""
+[[ $output != *"#13"* && $output != *"#14"* ]] || fail "a Work item is listed as an Intent. Output:"$'\n'"$output"
 
 expected_json='[
   {"issue": 1, "title": "P0 Foundations", "prs": [2], "leadTimeHours": 10.5, "unattendedTimeHours": null, "humanTouches": null, "reversions": 0},
