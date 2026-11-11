@@ -53,6 +53,8 @@ fixture() { cat >"$fixtures/$1"; } # name, JSON on stdin
 
 bot='{"login": "vicxs-room-booking-bot[bot]", "type": "Bot"}'
 human='{"login": "vicxs", "type": "User"}'
+# Any actor other than our bot is human for the metrics, other bots included.
+other_bot='{"login": "copilot-pull-request-reviewer[bot]", "type": "Bot"}'
 
 # Runs the script; sets $output and asserts the exit code and that the output
 # contains every expected substring.
@@ -93,9 +95,9 @@ EOF
 fixture issue-3.json <<'EOF'
 {"createdAt": "2026-02-01T00:00:00Z", "number": 3, "parent": null, "title": "Fail CI on non-bot commits"}
 EOF
-# Its 6 human touches: the re-Alignment at 03:00 and the comment at 04:00 here;
+# Its 7 human touches: the re-Alignment at 03:00 and the comment at 04:00 here;
 # on PR #4 below, the human commit at 05:00, the review at 05:30, the reply at
-# 06:00 and the comment at 06:30. Not touches: the comment at 02:00 (before
+# 06:00, the comment at 06:30 and another bot's comment at 06:40. Not touches: the comment at 02:00 (before
 # Alignment), bot activity, a label change, the final approval and the
 # comment at 09:00 (after the merge). The timeline comes in two pages, as
 # `gh api --paginate` prints it.
@@ -124,6 +126,7 @@ fixture timeline-4.json <<EOF
   {"event": "reviewed", "id": 402, "user": $human, "state": "commented", "submitted_at": "2026-02-01T05:30:00Z"},
   {"event": "reviewed", "id": 403, "user": $human, "state": "commented", "submitted_at": "2026-02-01T06:00:00Z"},
   {"event": "commented", "actor": $human, "user": $human, "id": 404, "created_at": "2026-02-01T06:30:00Z"},
+  {"event": "commented", "actor": $other_bot, "user": $other_bot, "id": 407, "created_at": "2026-02-01T06:40:00Z"},
   {"event": "commented", "actor": $bot, "user": $bot, "id": 405, "created_at": "2026-02-01T06:45:00Z"},
   {"event": "committed", "sha": "5ffc294", "author": {"name": "$BOT_NAME", "email": "$BOT_EMAIL", "date": "2026-02-01T07:00:00Z"}, "committer": {"name": "$BOT_NAME", "email": "$BOT_EMAIL", "date": "2026-02-01T07:00:00Z"}},
   {"event": "reviewed", "id": 406, "user": $human, "state": "approved", "submitted_at": "2026-02-01T07:50:00Z"},
@@ -215,7 +218,9 @@ expect "an Intent without Alignment shows lead time and dashes" 0 "" \
 expect "unattended time starts at the last ready-for-agent event" 0 "" \
   "| #3 | Fail CI on non-bot commits | #4 | 8.0 | 5.0 |"
 expect "human touches after Alignment: re-alignment, comments, a commit, reviews" 0 "" \
-  "| #3 | Fail CI on non-bot commits | #4 | 8.0 | 5.0 | 6 |"
+  "| #3 | Fail CI on non-bot commits | #4 | 8.0 | 5.0 | 7 |"
+expect "another bot's comment is a human touch: only our bot is not human" 0 "" \
+  "| #3 | Fail CI on non-bot commits | #4 | 8.0 | 5.0 | 7 |"
 expect "an aligned Intent with only the final approval has no human touches" 0 "" \
   "| #9 | Quiet the generator | #10 | 2.0 | 1.0 | 0 | 0 |"
 expect "an Intent closed by two merged PRs ends at the last merge and sums touches" 0 "" \
@@ -223,7 +228,7 @@ expect "an Intent closed by two merged PRs ends at the last merge and sums touch
 expect "a Revert PR counts a Reversion on the reverted Intent" 0 "" \
   "| #5 | Align the factory doc | #6, #7 | 24.0 | 23.5 | 2 | 1 |"
 expect "a reversion issue counts a Reversion on the Intent of the PR that caused it" 0 "" \
-  "| #3 | Fail CI on non-bot commits | #4 | 8.0 | 5.0 | 6 | 1 |"
+  "| #3 | Fail CI on non-bot commits | #4 | 8.0 | 5.0 | 7 | 1 |"
 [[ $output != *"#11"* && $output != *"#8"* ]] ||
   fail "a Revert PR, or the issue only it closes, is listed as an Intent. Output:"$'\n'"$output"
 expect "a sub-issue is not listed" 0 ""
@@ -231,7 +236,7 @@ expect "a sub-issue is not listed" 0 ""
 
 expected_json='[
   {"issue": 1, "title": "P0 Foundations", "prs": [2], "leadTimeHours": 10.5, "unattendedTimeHours": null, "humanTouches": null, "reversions": 0},
-  {"issue": 3, "title": "Fail CI on non-bot commits", "prs": [4], "leadTimeHours": 8, "unattendedTimeHours": 5, "humanTouches": 6, "reversions": 1},
+  {"issue": 3, "title": "Fail CI on non-bot commits", "prs": [4], "leadTimeHours": 8, "unattendedTimeHours": 5, "humanTouches": 7, "reversions": 1},
   {"issue": 5, "title": "Align the factory doc", "prs": [6, 7], "leadTimeHours": 24, "unattendedTimeHours": 23.5, "humanTouches": 2, "reversions": 1},
   {"issue": 9, "title": "Quiet the generator", "prs": [10], "leadTimeHours": 2, "unattendedTimeHours": 1, "humanTouches": 0, "reversions": 0}
 ]'

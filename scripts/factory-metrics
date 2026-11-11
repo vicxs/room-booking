@@ -99,7 +99,8 @@ for n in $(jq -s 'map(.prs[]) | unique[]' "$data/issues.jsonl"); do
   jq -c --argjson n "$n" '{number: $n, timeline: .}' "$data/timeline.json" >>"$data/pr-timelines.jsonl"
 done
 
-metrics=$(jq -n -f "$scripts/factory-metrics.jq" --arg botEmail "$BOT_EMAIL" \
+# The bot's GitHub login is its git name, BOT_NAME.
+metrics=$(jq -n -f "$scripts/factory-metrics.jq" --arg botLogin "$BOT_NAME" --arg botEmail "$BOT_EMAIL" \
   --slurpfile prs "$data/intent-prs.json" --slurpfile reverts "$data/reverts.json" \
   --slurpfile reversionIssues "$data/reversion-issues.json" \
   --slurpfile issues "$data/issues.jsonl" --slurpfile prTimelines "$data/pr-timelines.jsonl")

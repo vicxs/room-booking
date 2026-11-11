@@ -1,5 +1,6 @@
 # The factory metrics (docs/factory.md, "Metrics") of every measured Intent,
 # from the GitHub data scripts/factory-metrics gathers. Run with `jq -n -f`:
+#   --arg botLogin          the bot's GitHub login (scripts/bot-identity.sh)
 #   --arg botEmail          the bot's commit email (scripts/bot-identity.sh)
 #   --slurpfile prs         the merged PRs that close Intents
 #   --slurpfile reverts     the merged `Revert "…"` PRs
@@ -12,7 +13,9 @@ $prs[0] as $prs | $reverts[0] as $reverts | $reversionIssues[0] as $reversionIss
 
 | def ts: fromdateiso8601;
 def hours($from; $to): (($to | ts) - ($from | ts)) / 3600 * 10 | round / 10;
-def human: .type != "Bot";
+# Human is any actor other than our bot, other bots included: one rule for
+# every source, the bot's login for events and its email for commits.
+def human: .login != $botLogin;
 
 # Each human action in a timeline, as {at}: a review (its inline comments and
 # thread replies are part of a review: GitHub wraps each reply in a review of
