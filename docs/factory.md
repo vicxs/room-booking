@@ -106,14 +106,14 @@ If any condition fails, the PR goes to `ready-for-human`. The path list will ope
 
 ## Metrics
 
-Computed from GitHub with a `gh` script (the factory's first Intent) and included in every retro.
+Computed from GitHub by `scripts/factory-metrics [--since YYYY-MM-DD] [--json]`, read-only with plain `gh`, and included in every retro. It prints one row per measured Intent: a top-level issue closed by at least one merged PR (a large Intent is measured at its Spec, not its Work items; `Revert "…"` PRs are not Intents). Durations are in hours; with several merged PRs per Intent they end at the last merge and touches and Reversions are summed. An Intent never labelled `ready-for-agent` shows `—` for unattended time and human touches. Its test, `scripts/tests/factory-metrics.test.sh`, runs in the `identity` CI job.
 
 | Metric | How it is measured | Required convention |
 |---|---|---|
 | Lead time | Issue created → PR merged | The PR includes `Closes #N` |
-| Unattended time | `ready-for-agent` label → merge | — |
-| Human touches | Human comments, reviews and commits on the PR after Alignment | The agent acts as a bot, never as a human user |
-| Reversions | `Revert "…"` PRs and issues labelled `reversion` | The issue includes `Caused by #PR` |
+| Unattended time | Last `ready-for-agent` label → merge (re-Alignment restarts the clock) | — |
+| Human touches | Human reviews (with their inline comments), comments, commits and re-applications of `ready-for-agent` on the Intent or its PRs, after Alignment and up to the merge, except the final approval | The agent acts as a bot, never as a human user |
+| Reversions | `Revert "…"` PRs (`Reverts …#PR`) and issues labelled `reversion`, counted on the reverted Intent | The issue includes `Caused by #PR` |
 | Audit | `audit:ok` / `audit:confusing` labels on merged PRs | From P3 on |
 
 The **Audit sampling rate** is the confidence indicator: if it can be lowered without `audit:confusing` going up, confidence is growing.
