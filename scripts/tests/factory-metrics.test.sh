@@ -29,13 +29,14 @@ case "$1 $2" in
   "issue list") file=reversion-issues.json ;;
   "issue view") file=issue-$3.json ;;
   "api "*)
-    if [[ $2 =~ ^repos/\{owner\}/\{repo\}/issues/([0-9]+)/timeline$ ]]; then
-      file=timeline-${BASH_REMATCH[1]}.json
-    elif [[ $2 =~ ^repos/\{owner\}/\{repo\}/pulls/([0-9]+)/comments$ ]]; then
-      file=review-comments-${BASH_REMATCH[1]}.json
-    else
-      file=unknown
-    fi
+    file=unknown
+    for arg in "$@"; do
+      if [[ $arg =~ ^repos/\{owner\}/\{repo\}/issues/([0-9]+)/timeline$ ]]; then
+        file=timeline-${BASH_REMATCH[1]}.json
+      elif [[ $arg =~ ^repos/\{owner\}/\{repo\}/pulls/([0-9]+)/comments$ ]]; then
+        file=review-comments-${BASH_REMATCH[1]}.json
+      fi
+    done
     ;;
   *) file=unknown ;;
 esac
@@ -91,8 +92,32 @@ fixture timeline-2.json <<EOF
 EOF
 fixture review-comments-2.json <<<'[]'
 
+# Intent #3: aligned by the bot, re-aligned by the human; worked by PR #4.
+fixture issue-3.json <<'EOF'
+{"createdAt": "2026-02-01T00:00:00Z", "number": 3, "parent": null, "title": "Fail CI on non-bot commits"}
+EOF
+fixture timeline-3.json <<EOF
+[
+  {"event": "labeled", "actor": $bot, "created_at": "2026-02-01T01:00:00Z", "label": {"name": "ready-for-agent"}},
+  {"event": "commented", "actor": $human, "user": $human, "id": 301, "created_at": "2026-02-01T02:00:00Z"},
+  {"event": "unlabeled", "actor": $human, "created_at": "2026-02-01T02:01:00Z", "label": {"name": "ready-for-agent"}},
+  {"event": "labeled", "actor": $human, "created_at": "2026-02-01T03:00:00Z", "label": {"name": "ready-for-agent"}},
+  {"event": "closed", "actor": $human, "created_at": "2026-02-01T08:00:02Z"}
+]
+EOF
+fixture timeline-4.json <<EOF
+[
+  {"event": "committed", "sha": "62c7b8a", "author": {"name": "$BOT_NAME", "email": "$BOT_EMAIL", "date": "2026-02-01T04:00:00Z"}, "committer": {"name": "$BOT_NAME", "email": "$BOT_EMAIL", "date": "2026-02-01T04:00:00Z"}},
+  {"event": "reviewed", "id": 401, "user": $human, "state": "approved", "submitted_at": "2026-02-01T07:50:00Z"},
+  {"event": "merged", "actor": $human, "created_at": "2026-02-01T08:00:00Z"}
+]
+EOF
+fixture review-comments-4.json <<<'[]'
+
 fixture merged-prs.json <<'EOF'
 [
+  {"number": 4, "title": "Fail CI when a PR contains commits not authored by the bot", "body": "Closes #3", "mergedAt": "2026-02-01T08:00:00Z", "url": "https://github.com/acme/widgets/pull/4",
+   "closingIssuesReferences": [{"number": 3, "url": "https://github.com/acme/widgets/issues/3"}]},
   {"number": 2, "title": "P0 Foundations: walking skeleton", "body": "Closes #1", "mergedAt": "2026-01-01T10:30:00Z", "url": "https://github.com/acme/widgets/pull/2",
    "closingIssuesReferences": [{"number": 1, "url": "https://github.com/acme/widgets/issues/1"}]}
 ]
@@ -103,6 +128,8 @@ fixture reversion-issues.json <<<'[]'
 
 expect "an Intent without Alignment shows lead time and dashes" 0 "" \
   "| #1 | P0 Foundations | #2 | 10.5 | — | — | 0 |"
+expect "unattended time starts at the last ready-for-agent event" 0 "" \
+  "| #3 | Fail CI on non-bot commits | #4 | 8.0 | 5.0 |"
 
 if ((failures)); then
   echo "$failures failure(s)"

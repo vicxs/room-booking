@@ -36,6 +36,8 @@ intents=$(jq '[.[].closingIssuesReferences[].number] | unique | .[]' <<<"$merged
 issues='{}'
 for n in $intents; do
   issue=$(gh_read issue view "$n" --json number,title,createdAt,parent)
+  timeline=$(gh_read api --paginate "repos/{owner}/{repo}/issues/$n/timeline")
+  issue=$(jq --argjson timeline "$timeline" '.timeline = $timeline' <<<"$issue")
   issues=$(jq --argjson issue "$issue" '.[$issue.number | tostring] = $issue' <<<"$issues")
 done
 
@@ -45,11 +47,15 @@ metrics=$(jq -n --argjson prs "$merged_prs" --argjson issues "$issues" '
   [ $issues[] as $issue
     | [ $prs[] | select(any(.closingIssuesReferences[]; .number == $issue.number)) ] as $closing
     | ($closing | map(.mergedAt) | max) as $lastMerge
+    | [ $issue.timeline[]
+        | select(.event == "labeled" and .label.name == "ready-for-agent" and .created_at <= $lastMerge)
+        | .created_at ] as $alignments
+    | ($alignments | max) as $alignment
     | { issue: $issue.number,
         title: $issue.title,
         prs: ($closing | map(.number) | sort),
         leadTimeHours: hours($issue.createdAt; $lastMerge),
-        unattendedTimeHours: null,
+        unattendedTimeHours: (if $alignment then hours($alignment; $lastMerge) else null end),
         humanTouches: null,
         reversions: 0 } ]
   | sort_by(.issue)')
