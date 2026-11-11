@@ -29,7 +29,7 @@ The moment the human accepts the Plan by applying `ready-for-agent`; from then o
 _Avoid_: approval, sign-off
 
 **Human touch**:
-Any intervention of the human on an Intent after Alignment other than the final approval, such as a comment, a review, a change of approach asked of the agent or code of their own.
+Any action of the human on an Intent after Alignment other than the final approval, such as a comment, a review, a change of approach asked of the agent or code of their own.
 _Avoid_: intervention, nudge, correction
 
 **Ambiguity**:
