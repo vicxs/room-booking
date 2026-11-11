@@ -36,6 +36,8 @@ jobs:
         run: git ls-files -z scripts | xargs -0 shellcheck
       - name: Test the SessionStart hook
         run: scripts/tests/sync-main.test.sh
+      - name: Test the factory metrics
+        run: scripts/tests/factory-metrics.test.sh
       # The checkout is the PR's merge commit (refs/pull/N/merge): its first
       # parent is the current base branch and its second the PR head, so
       # HEAD^1..HEAD^2 is exactly the PR's commits. The event payload's
