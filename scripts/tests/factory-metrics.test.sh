@@ -211,9 +211,12 @@ fixture merged-prs.json <<'EOF'
    "closingIssuesReferences": [{"number": 1, "url": "https://github.com/acme/widgets/issues/1"}]}
 ]
 EOF
+# #11 and the Revert PR #8 both point at PR #7: one Reversion. #17 has no
+# Revert PR: PR #4 was fixed forward.
 fixture reversion-issues.json <<'EOF'
 [
-  {"number": 11, "body": "The check added in PR #4 fails on merge commits.\n\nCaused by #4"}
+  {"number": 17, "body": "The check added in PR #4 fails on merge commits.\n\nCaused by #4"},
+  {"number": 11, "body": "Part 2 contradicts part 1.\n\nCaused by #7"}
 ]
 EOF
 
@@ -237,6 +240,8 @@ expect "a Revert PR counts a Reversion on the reverted Intent" 0 "" \
   "| #5 | Align the factory doc | #6, #7 | 24.0 | 18.0 | 3 | 1 |"
 expect "a reversion issue counts a Reversion on the Intent of the PR that caused it" 0 "" \
   "| #3 | Fail CI on non-bot commits | #4 | 8.0 | 5.0 | 8 | 1 |"
+expect "a Revert PR and a reversion issue of the same PR count one Reversion" 0 "" \
+  "| #5 | Align the factory doc | #6, #7 | 24.0 | 18.0 | 3 | 1 |"
 [[ $output != *"#11"* && $output != *"#8"* ]] ||
   fail "a Revert PR, or the issue only it closes, is listed as an Intent. Output:"$'\n'"$output"
 expect "a sub-issue is not listed" 0 ""

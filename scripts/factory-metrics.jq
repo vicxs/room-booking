@@ -35,13 +35,12 @@ def pr_actions($pr):
   | (map(select(.review == "approved")) | max_by(.at)) as $final
   | map(select(. != $final));
 
-def intents_of_prs($numbers):
-  [ $prs[] | select(.number as $n | $numbers | index($n)) | .closingIssuesReferences[].number ] | unique;
-
-# Each Reversion, as the Intents of the PRs it reverts or that caused it.
-( [ $reverts[] | [ (.body // "") | scan("Reverts [^\\s#]*#([0-9]+)") | .[0] | tonumber ] ]
-  + [ $reversionIssues[] | [ (.body // "") | scan("Caused by [^\\s#]*#([0-9]+)"; "i") | .[0] | tonumber ] ]
-  | map(intents_of_prs(.)) ) as $reversions
+# The reverted PRs: those a Revert PR reverts or a reversion issue says caused
+# it. Each counts one Reversion, however many of them point at it: GitHub's
+# revert button often closes the reversion issue of the same PR.
+( [ ($reverts[] | (.body // "") | scan("Reverts [^\\s#]*#([0-9]+)")),
+    ($reversionIssues[] | (.body // "") | scan("Caused by [^\\s#]*#([0-9]+)"; "i"))
+  | .[0] | tonumber ] | unique ) as $revertedPrs
 
 | [ $issues[] as $issue
   | [ $prs[] | select(.number as $n | $issue.prs | index($n)) ] as $closing
@@ -66,5 +65,5 @@ def intents_of_prs($numbers):
       leadTimeHours: hours($issue.createdAt; $lastMerge),
       unattendedTimeHours: (if $alignment then hours($alignment; $lastMerge) else null end),
       humanTouches: (if $alignment then $touches else null end),
-      reversions: ($reversions | map(select(index($issue.number))) | length) } ]
+      reversions: ($issue.prs | map(select(. as $n | $revertedPrs | index($n))) | length) } ]
 | sort_by(.issue)
