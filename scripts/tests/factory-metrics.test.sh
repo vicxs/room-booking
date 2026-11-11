@@ -225,6 +225,28 @@ expect "a reversion issue counts a Reversion on the Intent of the PR that caused
 expect "a sub-issue is not listed" 0 ""
 [[ $output != *"#13"* && $output != *"#14"* ]] || fail "a sub-issue is listed as an Intent. Output:"$'\n'"$output"
 
+expected_json='[
+  {"issue": 1, "title": "P0 Foundations", "prs": [2], "leadTimeHours": 10.5, "unattendedTimeHours": null, "humanTouches": null, "reversions": 0},
+  {"issue": 3, "title": "Fail CI on non-bot commits", "prs": [4], "leadTimeHours": 8, "unattendedTimeHours": 5, "humanTouches": 6, "reversions": 1},
+  {"issue": 5, "title": "Align the factory doc", "prs": [6, 7], "leadTimeHours": 24, "unattendedTimeHours": 23.5, "humanTouches": 2, "reversions": 1},
+  {"issue": 9, "title": "Quiet the generator", "prs": [10], "leadTimeHours": 2, "unattendedTimeHours": 1, "humanTouches": 0, "reversions": 0}
+]'
+expect "--json prints the same data as JSON" 0 "--json"
+jq -e --argjson expected "$expected_json" '. == $expected' <<<"$output" >/dev/null ||
+  fail "--json: unexpected output:"$'\n'"$output"
+
+# #5's last merge is 2026-03-02T00:00:00Z; its first one, 2026-03-01.
+expect "--since keeps Intents whose last merge is on or after the date" 0 "--since 2026-03-02 --json"
+[[ $(jq -c 'map(.issue)' <<<"$output") == "[5]" ]] || fail "--since 2026-03-02: unexpected output:"$'\n'"$output"
+expect "--since works with the table too" 0 "--since 2026-02-10" "| #5 |" "| #9 |"
+[[ $output != *"| #3 |"* ]] || fail "--since 2026-02-10 lists #3. Output:"$'\n'"$output"
+expect "--since after every merge lists nothing" 0 "--since 2026-03-03 --json"
+[[ $output == "[]" ]] || fail "--since 2026-03-03: unexpected output:"$'\n'"$output"
+
+for args in "--bogus" "--since" "--since 2026-3-1" "--since 2026-02-30" "--since yesterday" "extra"; do
+  expect "'$args' is a usage error" 2 "$args" "Usage:"
+done
+
 if ((failures)); then
   echo "$failures failure(s)"
   exit 1

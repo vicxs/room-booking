@@ -13,9 +13,19 @@ usage() {
 }
 
 json=false
+since=0000-00-00
 while (($#)); do
   case $1 in
     --json) json=true ;;
+    --since)
+      (($# >= 2)) || usage
+      # A real calendar date: it must survive a round trip through strptime.
+      [[ $2 =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] &&
+        jq -en --arg d "$2" '$d | strptime("%Y-%m-%d") | mktime | strftime("%Y-%m-%d") == $d' \
+          >/dev/null 2>&1 || usage
+      since=$2
+      shift
+      ;;
     *) usage ;;
   esac
   shift
@@ -41,10 +51,14 @@ reversion_issues=$(gh_read issue list --state all --label reversion --limit 1000
 reverts=$(jq '[.[] | select(.title | startswith("Revert \""))]' <<<"$merged_prs")
 intent_prs=$(jq '[.[] | select(.title | startswith("Revert \"") | not)]' <<<"$merged_prs")
 
-# The measured Intents: top-level issues closed by a merged PR. A large Intent
-# is measured at its Spec, so its Work items (sub-issues) are skipped.
+# The measured Intents: top-level issues closed by a merged PR (whose last
+# merge is on or after --since). A large Intent is measured at its Spec, so its
+# Work items (sub-issues) are skipped.
 issues='{}'
-for n in $(jq '[.[].closingIssuesReferences[].number] | unique | .[]' <<<"$intent_prs"); do
+for n in $(jq --arg since "$since" '
+  [.[] | {mergedAt} + (.closingIssuesReferences[] | {number})]
+  | group_by(.number)[]
+  | select(map(.mergedAt) | max | .[0:10] >= $since) | .[0].number' <<<"$intent_prs"); do
   issue=$(gh_read issue view "$n" --json number,title,createdAt,parent)
   [[ $(jq '.parent' <<<"$issue") == null ]] || continue
   timeline=$(gh_read api --paginate "repos/{owner}/{repo}/issues/$n/timeline")
