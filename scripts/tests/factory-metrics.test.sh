@@ -149,8 +149,40 @@ fixture timeline-10.json <<EOF
 ]
 EOF
 
+# Intent #5: closed by two merged PRs, #6 and #7. #7 is later reverted with
+# GitHub's revert button (PR #8), which also closes the reversion issue #11.
+fixture issue-5.json <<'EOF'
+{"createdAt": "2026-03-01T00:00:00Z", "number": 5, "parent": null, "title": "Align the factory doc"}
+EOF
+fixture timeline-5.json <<EOF
+[
+  {"event": "labeled", "actor": $bot, "created_at": "2026-03-01T00:30:00Z", "label": {"name": "ready-for-agent"}},
+  {"event": "closed", "actor": $human, "created_at": "2026-03-02T00:00:02Z"}
+]
+EOF
+fixture timeline-6.json <<EOF
+[
+  {"event": "reviewed", "id": 601, "user": $human, "state": "changes_requested", "submitted_at": "2026-03-01T01:00:00Z"},
+  {"event": "reviewed", "id": 602, "user": $human, "state": "approved", "submitted_at": "2026-03-01T01:50:00Z"},
+  {"event": "merged", "actor": $human, "created_at": "2026-03-01T02:00:00Z"}
+]
+EOF
+fixture timeline-7.json <<EOF
+[
+  {"event": "commented", "actor": $human, "user": $human, "id": 701, "created_at": "2026-03-01T12:00:00Z"},
+  {"event": "reviewed", "id": 702, "user": $human, "state": "approved", "submitted_at": "2026-03-01T23:50:00Z"},
+  {"event": "merged", "actor": $human, "created_at": "2026-03-02T00:00:00Z"}
+]
+EOF
+
 fixture merged-prs.json <<'EOF'
 [
+  {"number": 8, "title": "Revert \"Align the factory doc, part 2\"", "body": "Reverts acme/widgets#7\r\n\r\nCloses #11", "mergedAt": "2026-03-03T00:00:00Z", "url": "https://github.com/acme/widgets/pull/8",
+   "closingIssuesReferences": [{"number": 11, "url": "https://github.com/acme/widgets/issues/11"}]},
+  {"number": 7, "title": "Align the factory doc, part 2", "body": "Closes #5", "mergedAt": "2026-03-02T00:00:00Z", "url": "https://github.com/acme/widgets/pull/7",
+   "closingIssuesReferences": [{"number": 5, "url": "https://github.com/acme/widgets/issues/5"}]},
+  {"number": 6, "title": "Align the factory doc, part 1", "body": "Closes #5", "mergedAt": "2026-03-01T02:00:00Z", "url": "https://github.com/acme/widgets/pull/6",
+   "closingIssuesReferences": [{"number": 5, "url": "https://github.com/acme/widgets/issues/5"}]},
   {"number": 10, "title": "Quiet the OpenAPI generator output", "body": "Closes #9", "mergedAt": "2026-02-10T02:00:00Z", "url": "https://github.com/acme/widgets/pull/10",
    "closingIssuesReferences": [{"number": 9, "url": "https://github.com/acme/widgets/issues/9"}]},
   {"number": 4, "title": "Fail CI when a PR contains commits not authored by the bot", "body": "Closes #3", "mergedAt": "2026-02-01T08:00:00Z", "url": "https://github.com/acme/widgets/pull/4",
@@ -159,7 +191,11 @@ fixture merged-prs.json <<'EOF'
    "closingIssuesReferences": [{"number": 1, "url": "https://github.com/acme/widgets/issues/1"}]}
 ]
 EOF
-fixture reversion-issues.json <<<'[]'
+fixture reversion-issues.json <<'EOF'
+[
+  {"number": 11, "body": "The check added in PR #4 fails on merge commits.\n\nCaused by #4"}
+]
+EOF
 
 # --- Tests ---------------------------------------------------------------------
 
@@ -168,9 +204,17 @@ expect "an Intent without Alignment shows lead time and dashes" 0 "" \
 expect "unattended time starts at the last ready-for-agent event" 0 "" \
   "| #3 | Fail CI on non-bot commits | #4 | 8.0 | 5.0 |"
 expect "human touches after Alignment: re-alignment, comments, a commit, reviews" 0 "" \
-  "| #3 | Fail CI on non-bot commits | #4 | 8.0 | 5.0 | 6 | 0 |"
+  "| #3 | Fail CI on non-bot commits | #4 | 8.0 | 5.0 | 6 |"
 expect "an aligned Intent with only the final approval has no human touches" 0 "" \
   "| #9 | Quiet the generator | #10 | 2.0 | 1.0 | 0 | 0 |"
+expect "an Intent closed by two merged PRs ends at the last merge and sums touches" 0 "" \
+  "| #5 | Align the factory doc | #6, #7 | 24.0 | 23.5 | 2 |"
+expect "a Revert PR counts a Reversion on the reverted Intent" 0 "" \
+  "| #5 | Align the factory doc | #6, #7 | 24.0 | 23.5 | 2 | 1 |"
+expect "a reversion issue counts a Reversion on the Intent of the PR that caused it" 0 "" \
+  "| #3 | Fail CI on non-bot commits | #4 | 8.0 | 5.0 | 6 | 1 |"
+[[ $output != *"#11"* && $output != *"#8"* ]] ||
+  fail "a Revert PR, or the issue only it closes, is listed as an Intent. Output:"$'\n'"$output"
 
 if ((failures)); then
   echo "$failures failure(s)"
