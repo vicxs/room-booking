@@ -1,0 +1,14 @@
+{
+  // Settings shared by the app and the generated Contract client, so the client
+  // is compiled for the same target and module system as the code importing it.
+  // The stricter options for hand-written code stay in tsconfig.app.json.
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "isolatedModules": true,
+    "skipLibCheck": true
+  }
+}

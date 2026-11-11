@@ -5,20 +5,14 @@
   // `@/api/generated` and is type-checked against the declarations emitted
   // here, so Contract drift still fails compilation. This file lives outside
   // the generated directory, which is regenerated and git-ignored.
+  "extends": "./tsconfig.base.json",
   "compilerOptions": {
     "composite": true,
     "emitDeclarationOnly": true,
     "rootDir": "./src/api/generated",
     "outDir": "./node_modules/.tmp/generated",
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.generated.tsbuildinfo",
-    "target": "ES2022",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "types": [],
-    "strict": true,
-    "isolatedModules": true,
-    "skipLibCheck": true
+    "types": []
   },
   "include": ["src/api/generated"]
 }
