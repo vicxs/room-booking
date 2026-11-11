@@ -14,6 +14,29 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # Every commit a PR adds must be authored by the factory bot (docs/factory.md,
+  # "Agent identity"). Skipped outside PRs; a skipped job counts as passing.
+  identity:
+    name: identity
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Test the check
+        run: scripts/tests/check-commit-authors.test.sh
+      # The checkout is the PR's merge commit (refs/pull/N/merge): its first
+      # parent is the current base branch and its second the PR head, so
+      # HEAD^1..HEAD^2 is exactly the PR's commits. The event payload's
+      # base.sha is not used: it can be stale after the base branch moves.
+      - name: Check commit authors
+        run: scripts/check-commit-authors HEAD^1 HEAD^2
+
   backend:
     name: backend
     runs-on: ubuntu-24.04
