@@ -86,7 +86,7 @@ An Intent goes down the large route if it has **more than one vertical slice**, 
 
 When an Intent changes the API, the full Contract (OpenAPI) goes in the Spec, or in the brief's *key interfaces* field if the Intent is small, and is reviewed at Alignment. The first Work item materializes it in `openapi.yaml` and generates the Spring interfaces and the TypeScript client; it blocks all the others. Later Work items implement it **without modifying it**: if they need to change it, that is an Ambiguity and the Plan is re-aligned ([ADR-0002](adr/0002-contract-first-with-openapi.md)).
 
-`/implement-spec` works on an integration branch with a single PR. The whole branch is reviewed, read commit by commit: the Contract first, then one merge per Work item.
+`/implement-spec` works on an integration branch with a single PR. The whole branch is reviewed, read commit by commit: the Contract first, then one merge per Work item. That history stays on the PR in GitHub; `main` receives a single squash commit per Intent, which is what gets reverted as a unit and counted by the Reversion metric.
 
 ## Human gate
 
