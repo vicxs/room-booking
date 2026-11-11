@@ -33,8 +33,6 @@ case "$1 $2" in
     for arg in "$@"; do
       if [[ $arg =~ ^repos/\{owner\}/\{repo\}/issues/([0-9]+)/timeline$ ]]; then
         file=timeline-${BASH_REMATCH[1]}.json
-      elif [[ $arg =~ ^repos/\{owner\}/\{repo\}/pulls/([0-9]+)/comments$ ]]; then
-        file=review-comments-${BASH_REMATCH[1]}.json
       fi
     done
     ;;
@@ -90,32 +88,71 @@ fixture timeline-2.json <<EOF
   {"event": "merged", "actor": $human, "created_at": "2026-01-01T10:30:00Z"}
 ]
 EOF
-fixture review-comments-2.json <<<'[]'
 
 # Intent #3: aligned by the bot, re-aligned by the human; worked by PR #4.
 fixture issue-3.json <<'EOF'
 {"createdAt": "2026-02-01T00:00:00Z", "number": 3, "parent": null, "title": "Fail CI on non-bot commits"}
 EOF
+# Human touches on it, as the trailing "touch" notes say: 6 in all.
 fixture timeline-3.json <<EOF
 [
   {"event": "labeled", "actor": $bot, "created_at": "2026-02-01T01:00:00Z", "label": {"name": "ready-for-agent"}},
   {"event": "commented", "actor": $human, "user": $human, "id": 301, "created_at": "2026-02-01T02:00:00Z"},
   {"event": "unlabeled", "actor": $human, "created_at": "2026-02-01T02:01:00Z", "label": {"name": "ready-for-agent"}},
   {"event": "labeled", "actor": $human, "created_at": "2026-02-01T03:00:00Z", "label": {"name": "ready-for-agent"}},
-  {"event": "closed", "actor": $human, "created_at": "2026-02-01T08:00:02Z"}
+  {"event": "commented", "actor": $bot, "user": $bot, "id": 302, "created_at": "2026-02-01T03:30:00Z"},
+  {"event": "labeled", "actor": $human, "created_at": "2026-02-01T03:40:00Z", "label": {"name": "enhancement"}},
+  {"event": "commented", "actor": $human, "user": $human, "id": 303, "created_at": "2026-02-01T04:00:00Z"},
+  {"event": "closed", "actor": $human, "created_at": "2026-02-01T08:00:02Z"},
+  {"event": "commented", "actor": $human, "user": $human, "id": 304, "created_at": "2026-02-01T09:00:00Z"}
 ]
 EOF
+# Notes: 02:00 comment is before Alignment; 03:00 re-application = touch;
+# 03:30 bot comment and 03:40 label change are not touches; 04:00 = touch;
+# 09:00 is after the merge.
+# PR #4: the review at 05:30 carries two inline comments (they live on the
+# review, not in the timeline) and 06:00 is a reply in its thread, which GitHub
+# wraps in a review of its own; 07:50 is the final approval.
 fixture timeline-4.json <<EOF
 [
   {"event": "committed", "sha": "62c7b8a", "author": {"name": "$BOT_NAME", "email": "$BOT_EMAIL", "date": "2026-02-01T04:00:00Z"}, "committer": {"name": "$BOT_NAME", "email": "$BOT_EMAIL", "date": "2026-02-01T04:00:00Z"}},
-  {"event": "reviewed", "id": 401, "user": $human, "state": "approved", "submitted_at": "2026-02-01T07:50:00Z"},
+  {"event": "committed", "sha": "0cba0b9", "author": {"name": "Victor", "email": "victor@example.com", "date": "2026-02-01T05:00:00Z"}, "committer": {"name": "Victor", "email": "victor@example.com", "date": "2026-02-01T05:00:00Z"}},
+  {"event": "reviewed", "id": 402, "user": $human, "state": "commented", "submitted_at": "2026-02-01T05:30:00Z"},
+  {"event": "reviewed", "id": 403, "user": $human, "state": "commented", "submitted_at": "2026-02-01T06:00:00Z"},
+  {"event": "commented", "actor": $human, "user": $human, "id": 404, "created_at": "2026-02-01T06:30:00Z"},
+  {"event": "commented", "actor": $bot, "user": $bot, "id": 405, "created_at": "2026-02-01T06:45:00Z"},
+  {"event": "committed", "sha": "5ffc294", "author": {"name": "$BOT_NAME", "email": "$BOT_EMAIL", "date": "2026-02-01T07:00:00Z"}, "committer": {"name": "$BOT_NAME", "email": "$BOT_EMAIL", "date": "2026-02-01T07:00:00Z"}},
+  {"event": "reviewed", "id": 406, "user": $human, "state": "approved", "submitted_at": "2026-02-01T07:50:00Z"},
   {"event": "merged", "actor": $human, "created_at": "2026-02-01T08:00:00Z"}
 ]
 EOF
-fixture review-comments-4.json <<<'[]'
+
+# Intent #9: only bot activity and the final approval after Alignment, like
+# the real #3, #5 and #6.
+fixture issue-9.json <<'EOF'
+{"createdAt": "2026-02-10T00:00:00Z", "number": 9, "parent": null, "title": "Quiet the generator"}
+EOF
+fixture timeline-9.json <<EOF
+[
+  {"event": "commented", "actor": $bot, "user": $bot, "id": 901, "created_at": "2026-02-10T00:59:00Z"},
+  {"event": "labeled", "actor": $bot, "created_at": "2026-02-10T01:00:00Z", "label": {"name": "ready-for-agent"}},
+  {"event": "closed", "actor": $human, "created_at": "2026-02-10T02:00:02Z"}
+]
+EOF
+fixture timeline-10.json <<EOF
+[
+  {"event": "committed", "sha": "22d8e7a", "author": {"name": "$BOT_NAME", "email": "$BOT_EMAIL", "date": "2026-02-10T01:10:00Z"}, "committer": {"name": "$BOT_NAME", "email": "$BOT_EMAIL", "date": "2026-02-10T01:10:00Z"}},
+  {"event": "commented", "actor": $bot, "user": $bot, "id": 1001, "created_at": "2026-02-10T01:20:00Z"},
+  {"event": "labeled", "actor": $bot, "created_at": "2026-02-10T01:21:00Z", "label": {"name": "ready-for-agent"}},
+  {"event": "reviewed", "id": 1002, "user": $human, "state": "approved", "submitted_at": "2026-02-10T01:59:00Z"},
+  {"event": "merged", "actor": $human, "created_at": "2026-02-10T02:00:00Z"}
+]
+EOF
 
 fixture merged-prs.json <<'EOF'
 [
+  {"number": 10, "title": "Quiet the OpenAPI generator output", "body": "Closes #9", "mergedAt": "2026-02-10T02:00:00Z", "url": "https://github.com/acme/widgets/pull/10",
+   "closingIssuesReferences": [{"number": 9, "url": "https://github.com/acme/widgets/issues/9"}]},
   {"number": 4, "title": "Fail CI when a PR contains commits not authored by the bot", "body": "Closes #3", "mergedAt": "2026-02-01T08:00:00Z", "url": "https://github.com/acme/widgets/pull/4",
    "closingIssuesReferences": [{"number": 3, "url": "https://github.com/acme/widgets/issues/3"}]},
   {"number": 2, "title": "P0 Foundations: walking skeleton", "body": "Closes #1", "mergedAt": "2026-01-01T10:30:00Z", "url": "https://github.com/acme/widgets/pull/2",
@@ -130,6 +167,10 @@ expect "an Intent without Alignment shows lead time and dashes" 0 "" \
   "| #1 | P0 Foundations | #2 | 10.5 | — | — | 0 |"
 expect "unattended time starts at the last ready-for-agent event" 0 "" \
   "| #3 | Fail CI on non-bot commits | #4 | 8.0 | 5.0 |"
+expect "human touches after Alignment: re-alignment, comments, a commit, reviews" 0 "" \
+  "| #3 | Fail CI on non-bot commits | #4 | 8.0 | 5.0 | 6 | 0 |"
+expect "an aligned Intent with only the final approval has no human touches" 0 "" \
+  "| #9 | Quiet the generator | #10 | 2.0 | 1.0 | 0 | 0 |"
 
 if ((failures)); then
   echo "$failures failure(s)"
