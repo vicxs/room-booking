@@ -1,18 +1,7 @@
-# OpenAPI Generator settings for the frontend Contract client.
-#
-# Passed to the generator with `--config` by the `generate:api` script. The
-# settings live here instead of as a generator in `openapitools.json` because
-# the wrapper runs config-file generators through `concurrently`, which
-# prefixes every line and always echoes the full `java -jar ...` command.
-# With `--config`, the wrapper hands the arguments straight to the generator
-# jar, so the script can make a successful run silent (`--quiet` hides the
-# banner, `-Dlog.level=warn` hides the INFO logging) while errors still print.
-# `openapitools.json` keeps only the pinned generator version.
-#
-# The input spec is passed on the command line (`--input-spec`) rather than
-# set here: the generator only checks that a command-line spec path exists,
-# which turns a missing spec into a one-line "The spec file is not found"
-# error instead of a parser stack trace.
+# OpenAPI Generator settings for the frontend Contract client. They live here,
+# not in openapitools.json, so the `generate:api` script can run the generator
+# directly and stay silent on success. The spec path is passed on the command
+# line (`--input-spec`) so a missing spec fails with a one-line error.
 generatorName: typescript-fetch
 outputDir: src/api/generated
 additionalProperties:

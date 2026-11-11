@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Fails if a successful `pnpm -C frontend generate:api` prints anything besides
+# pnpm's script header (`$ ...` / `> ...`) and the wrapper's one-time jar
+# download (`Download ...` / `Downloaded ...`). Catches a generator or wrapper
+# upgrade that brings the banner, INFO logging or `java -jar` echo back (#5).
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+
+output=$(pnpm -C frontend generate:api 2>&1) || {
+  printf '%s\n' "$output"
+  echo "generate:api failed" >&2
+  exit 1
+}
+
+noise=$(printf '%s\n' "$output" | grep -Ev '^(\$ |> |Download(ed)? |$)' || true)
+if [[ -n "$noise" ]]; then
+  printf '%s\n' "$noise"
+  echo "generate:api is not quiet on success: the lines above are unexpected" >&2
+  exit 1
+fi
+echo "generate:api is quiet on success"
