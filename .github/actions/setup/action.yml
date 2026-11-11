@@ -1,0 +1,19 @@
+name: Set up toolchain
+description: Java, Node.js and pnpm at the versions pinned in the repo, with dependency caches.
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+      with:
+        distribution: temurin
+        java-version: "21"
+        cache: maven
+        cache-dependency-path: backend/pom.xml
+    - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version-file: .tool-versions
+        cache: pnpm
+    - name: Install frontend dependencies
+      shell: bash
+      run: pnpm install --frozen-lockfile

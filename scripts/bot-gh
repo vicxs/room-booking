@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# `gh` acting as the factory bot. Usage: scripts/bot-gh pr create ...
+set -euo pipefail
+GH_TOKEN=$("$(dirname "$0")/bot-token") exec gh "$@"
