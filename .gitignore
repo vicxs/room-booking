@@ -4,3 +4,8 @@
 .vscode/
 node_modules/
 backend/target/
+
+# Claude Code: agent worktrees and per-machine settings (the shared ones live
+# in .claude/settings.json)
+.claude/worktrees/
+.claude/settings.local.json
