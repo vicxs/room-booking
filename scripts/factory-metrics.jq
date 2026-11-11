@@ -49,11 +49,17 @@ def intents_of_prs($numbers):
   | [ $issue.timeline[]
       | select(.event == "labeled" and .label.name == "ready-for-agent" and .created_at <= $lastMerge) ]
     as $alignments
-  | ($alignments | map(.created_at) | max) as $alignment
-  # Re-Alignment by the human is a touch: it happens at Alignment, not after.
-  | ($alignments | sort_by(.created_at) | .[1:] | map(select(.actor | human)) | length) as $realignments
+  | ($alignments | sort_by(.created_at)) as $alignments
+  # Unattended time starts at the last Alignment: re-Alignment restarts it.
+  | ($alignments | last | .created_at) as $alignment
+  # Human touches count from the first Alignment, so re-aligning an Intent
+  # between two of its merged PRs keeps the first PR's touches. Each human
+  # re-application of `ready-for-agent` is a touch; it is not an action, since
+  # it happens at an Alignment rather than after one.
+  | ($alignments | first | .created_at) as $firstAlignment
+  | ($alignments | .[1:] | map(select(.actor | human)) | length) as $realignments
   | ([ $issue.timeline | actions ] + [ $closing[] as $pr | pr_actions($pr)[] ]
-     | map(select(.at > $alignment and .at <= $lastMerge)) | length + $realignments) as $touches
+     | map(select(.at > $firstAlignment and .at <= $lastMerge)) | length + $realignments) as $touches
   | { issue: $issue.number,
       title: $issue.title,
       prs: $issue.prs,

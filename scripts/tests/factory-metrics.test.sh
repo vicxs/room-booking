@@ -91,18 +91,21 @@ fixture timeline-2.json <<EOF
 ]
 EOF
 
-# Intent #3: aligned by the bot, re-aligned by the human; worked by PR #4.
+# Intent #3: aligned by the human (the bot applies `ready-for-agent` on their
+# behalf, as in this repo), then re-aligned by the human; worked by PR #4.
 fixture issue-3.json <<'EOF'
 {"createdAt": "2026-02-01T00:00:00Z", "number": 3, "parent": null, "title": "Fail CI on non-bot commits"}
 EOF
-# Its 7 human touches: the re-Alignment at 03:00 and the comment at 04:00 here;
-# on PR #4 below, the human commit at 05:00, the review at 05:30, the reply at
-# 06:00, the comment at 06:30 and another bot's comment at 06:40. Not touches: the comment at 02:00 (before
-# Alignment), bot activity, a label change, the final approval and the
-# comment at 09:00 (after the merge). The timeline comes in two pages, as
-# `gh api --paginate` prints it.
+# Its 8 human touches, counted from the first Alignment: the comment at 02:00,
+# the re-Alignment at 03:00 and the comment at 04:00 here; on PR #4 below, the
+# human commit at 05:00, the review at 05:30, the reply at 06:00, the comment
+# at 06:30 and another bot's comment at 06:40. Not touches: the comment at
+# 00:30 (before Alignment), bot activity, a label change, the final approval
+# and the comment at 09:00 (after the merge). The timeline comes in two pages,
+# as `gh api --paginate` prints it.
 fixture timeline-3.json <<EOF
 [
+  {"event": "commented", "actor": $human, "user": $human, "id": 300, "created_at": "2026-02-01T00:30:00Z"},
   {"event": "labeled", "actor": $bot, "created_at": "2026-02-01T01:00:00Z", "label": {"name": "ready-for-agent"}},
   {"event": "commented", "actor": $human, "user": $human, "id": 301, "created_at": "2026-02-01T02:00:00Z"},
   {"event": "unlabeled", "actor": $human, "created_at": "2026-02-01T02:01:00Z", "label": {"name": "ready-for-agent"}},
@@ -158,12 +161,15 @@ EOF
 
 # Intent #5: closed by two merged PRs, #6 and #7. #7 is later reverted with
 # GitHub's revert button (PR #8), which also closes the reversion issue #11.
+# The human re-aligns it at 06:00, between the two merges: its 3 human touches
+# are PR #6's review at 01:00, the re-Alignment and PR #7's comment.
 fixture issue-5.json <<'EOF'
 {"createdAt": "2026-03-01T00:00:00Z", "number": 5, "parent": null, "title": "Align the factory doc"}
 EOF
 fixture timeline-5.json <<EOF
 [
   {"event": "labeled", "actor": $bot, "created_at": "2026-03-01T00:30:00Z", "label": {"name": "ready-for-agent"}},
+  {"event": "labeled", "actor": $human, "created_at": "2026-03-01T06:00:00Z", "label": {"name": "ready-for-agent"}},
   {"event": "closed", "actor": $human, "created_at": "2026-03-02T00:00:02Z"}
 ]
 EOF
@@ -218,17 +224,19 @@ expect "an Intent without Alignment shows lead time and dashes" 0 "" \
 expect "unattended time starts at the last ready-for-agent event" 0 "" \
   "| #3 | Fail CI on non-bot commits | #4 | 8.0 | 5.0 |"
 expect "human touches after Alignment: re-alignment, comments, a commit, reviews" 0 "" \
-  "| #3 | Fail CI on non-bot commits | #4 | 8.0 | 5.0 | 7 |"
+  "| #3 | Fail CI on non-bot commits | #4 | 8.0 | 5.0 | 8 |"
 expect "another bot's comment is a human touch: only our bot is not human" 0 "" \
-  "| #3 | Fail CI on non-bot commits | #4 | 8.0 | 5.0 | 7 |"
+  "| #3 | Fail CI on non-bot commits | #4 | 8.0 | 5.0 | 8 |"
 expect "an aligned Intent with only the final approval has no human touches" 0 "" \
   "| #9 | Quiet the generator | #10 | 2.0 | 1.0 | 0 | 0 |"
 expect "an Intent closed by two merged PRs ends at the last merge and sums touches" 0 "" \
-  "| #5 | Align the factory doc | #6, #7 | 24.0 | 23.5 | 2 |"
+  "| #5 | Align the factory doc | #6, #7 | 24.0 | 18.0 | 3 |"
+expect "an Intent re-aligned between two merged PRs keeps the first PR's touches" 0 "" \
+  "| #5 | Align the factory doc | #6, #7 | 24.0 | 18.0 | 3 |"
 expect "a Revert PR counts a Reversion on the reverted Intent" 0 "" \
-  "| #5 | Align the factory doc | #6, #7 | 24.0 | 23.5 | 2 | 1 |"
+  "| #5 | Align the factory doc | #6, #7 | 24.0 | 18.0 | 3 | 1 |"
 expect "a reversion issue counts a Reversion on the Intent of the PR that caused it" 0 "" \
-  "| #3 | Fail CI on non-bot commits | #4 | 8.0 | 5.0 | 7 | 1 |"
+  "| #3 | Fail CI on non-bot commits | #4 | 8.0 | 5.0 | 8 | 1 |"
 [[ $output != *"#11"* && $output != *"#8"* ]] ||
   fail "a Revert PR, or the issue only it closes, is listed as an Intent. Output:"$'\n'"$output"
 expect "a sub-issue is not listed" 0 ""
@@ -236,8 +244,8 @@ expect "a sub-issue is not listed" 0 ""
 
 expected_json='[
   {"issue": 1, "title": "P0 Foundations", "prs": [2], "leadTimeHours": 10.5, "unattendedTimeHours": null, "humanTouches": null, "reversions": 0},
-  {"issue": 3, "title": "Fail CI on non-bot commits", "prs": [4], "leadTimeHours": 8, "unattendedTimeHours": 5, "humanTouches": 7, "reversions": 1},
-  {"issue": 5, "title": "Align the factory doc", "prs": [6, 7], "leadTimeHours": 24, "unattendedTimeHours": 23.5, "humanTouches": 2, "reversions": 1},
+  {"issue": 3, "title": "Fail CI on non-bot commits", "prs": [4], "leadTimeHours": 8, "unattendedTimeHours": 5, "humanTouches": 8, "reversions": 1},
+  {"issue": 5, "title": "Align the factory doc", "prs": [6, 7], "leadTimeHours": 24, "unattendedTimeHours": 18, "humanTouches": 3, "reversions": 1},
   {"issue": 9, "title": "Quiet the generator", "prs": [10], "leadTimeHours": 2, "unattendedTimeHours": 1, "humanTouches": 0, "reversions": 0}
 ]'
 expect "--json prints the same data as JSON" 0 "--json"
