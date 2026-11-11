@@ -1,0 +1,3 @@
+# Java + Spring Boot and React, with deliberately old versions
+
+The backend is Java 21 with Spring Boot 3.5 (Maven, PostgreSQL with Flyway, Testcontainers in tests) and the frontend is React 18 with Vite, React Router 6 and Tailwind 3, in a monorepo. We chose Java/React over full-stack TypeScript because the understandability Audit is done by an engineer whose environment is Java and because what we learn must carry over to the competence center; and we pin versions older than the current ones on purpose, so that migrating later (Java 25 / Spring Boot 4, React 19 / React Router 7 / Tailwind 4) becomes a real Intent to test the factory with.
