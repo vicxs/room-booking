@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+# Computes the factory metrics (docs/factory.md, "Metrics") of every measured
+# Intent from GitHub. Read-only: it uses plain `gh`, never scripts/bot-gh.
+# Usage: scripts/factory-metrics [--since YYYY-MM-DD] [--json]
+set -euo pipefail
+
+usage() {
+  echo "Usage: $0 [--since YYYY-MM-DD] [--json]" >&2
+  exit 2
+}
+
+json=false
+while (($#)); do
+  case $1 in
+    --json) json=true ;;
+    *) usage ;;
+  esac
+  shift
+done
+
+# Runs a read-only gh command and prints its JSON; --paginate pages (several
+# arrays back to back) are merged into one array.
+gh_read() {
+  local out
+  if ! out=$(gh "$@"); then
+    echo "Error: 'gh $*' failed (see above). Is gh installed and authenticated for this repo?" >&2
+    return 1
+  fi
+  jq -s 'if length == 1 then .[0] else add // [] end' <<<"$out"
+}
+
+merged_prs=$(gh_read pr list --state merged --limit 100000 \
+  --json number,title,body,mergedAt,url,closingIssuesReferences)
+
+intents=$(jq '[.[].closingIssuesReferences[].number] | unique | .[]' <<<"$merged_prs")
+issues='{}'
+for n in $intents; do
+  issue=$(gh_read issue view "$n" --json number,title,createdAt,parent)
+  issues=$(jq --argjson issue "$issue" '.[$issue.number | tostring] = $issue' <<<"$issues")
+done
+
+metrics=$(jq -n --argjson prs "$merged_prs" --argjson issues "$issues" '
+  def ts: fromdateiso8601;
+  def hours($from; $to): (($to | ts) - ($from | ts)) / 3600 * 10 | round / 10;
+  [ $issues[] as $issue
+    | [ $prs[] | select(any(.closingIssuesReferences[]; .number == $issue.number)) ] as $closing
+    | ($closing | map(.mergedAt) | max) as $lastMerge
+    | { issue: $issue.number,
+        title: $issue.title,
+        prs: ($closing | map(.number) | sort),
+        leadTimeHours: hours($issue.createdAt; $lastMerge),
+        unattendedTimeHours: null,
+        humanTouches: null,
+        reversions: 0 } ]
+  | sort_by(.issue)')
+
+if $json; then
+  echo "$metrics"
+  exit 0
+fi
+
+jq -r '
+  def hours: if . == null then "—" elif . == (. | floor) then "\(.).0" else tostring end;
+  def count: if . == null then "—" else tostring end;
+  "| Issue | Title | PRs | Lead time (h) | Unattended time (h) | Human touches | Reversions |",
+  "|---|---|---|---|---|---|---|",
+  (.[] | "| #\(.issue) | \(.title | gsub("\\|"; "\\|")) | \(.prs | map("#\(.)") | join(", ")) | \(.leadTimeHours | hours) | \(.unattendedTimeHours | hours) | \(.humanTouches | count) | \(.reversions) |")
+' <<<"$metrics"
