@@ -1,0 +1,9 @@
+packages:
+  - frontend
+
+# Pin exact versions; upgrades are deliberate Intents.
+saveExact: true
+# Supply-chain guard: never install a version published less than a day ago.
+minimumReleaseAge: 1440
+allowBuilds:
+  '@openapitools/openapi-generator-cli': false
