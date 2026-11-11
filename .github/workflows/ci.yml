@@ -57,6 +57,8 @@ jobs:
       - uses: ./.github/actions/setup
         with:
           maven-cache: "false"
+      - name: Contract client generation is quiet on success
+        run: scripts/check-generate-api-quiet
       - name: Lint and format
         run: pnpm -C frontend lint
       - name: Typecheck (includes the generated Contract client)

@@ -1,0 +1,14 @@
+# OpenAPI Generator settings for the frontend Contract client. They live here,
+# not in openapitools.json, so the `generate:api` script can run the generator
+# directly and stay silent on success. The spec path is passed on the command
+# line (`--input-spec`) so a missing spec fails with a one-line error.
+generatorName: typescript-fetch
+outputDir: src/api/generated
+additionalProperties:
+  supportsES6: true
+  useSingleRequestParameter: true
+  stringEnums: true
+  hideGenerationTimestamp: true
+globalProperties:
+  apiDocs: "false"
+  modelDocs: "false"

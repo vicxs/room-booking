@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "generate:api": "openapi-generator-cli generate",
+    "generate:api": "JAVA_OPTS=\"$JAVA_OPTS -Dlog.level=warn\" openapi-generator-cli generate --config openapi-generator.yaml --input-spec ../openapi.yaml --quiet",
     "predev": "pnpm generate:api",
     "dev": "vite",
     "prebuild": "pnpm generate:api",
