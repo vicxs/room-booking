@@ -1,0 +1,22 @@
+#!/bin/sh
+# Exits 0 when the staged changes can affect the frontend, 1 when they cannot,
+# and >1 on error. The pre-commit hook uses it to skip the frontend typecheck
+# and unit tests for commits that cannot break them; CI still runs everything.
+# Usage: scripts/staged-changes-affect-frontend
+#
+# Git matches the paths itself, so any file name (spaces, newlines, quotes)
+# works.
+git diff --cached --quiet --diff-filter=ACMRD -- \
+  ':(top)frontend' \
+  ':(top)openapi.yaml' \
+  ':(top)package.json' \
+  ':(top)pnpm-lock.yaml' \
+  ':(top)pnpm-workspace.yaml' \
+  ':(top).tool-versions' \
+  ':(top).husky'
+status=$?
+case $status in
+0) exit 1 ;;
+1) exit 0 ;;
+*) exit "$status" ;;
+esac
