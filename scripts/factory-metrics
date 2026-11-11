@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 # Computes the factory metrics (docs/factory.md, "Metrics") of every measured
 # Intent from GitHub. Read-only: it uses plain `gh`, never scripts/bot-gh.
+# It gathers the data here; scripts/factory-metrics.jq computes the metrics.
 # Usage: scripts/factory-metrics [--since YYYY-MM-DD] [--json]
 set -euo pipefail
 
+scripts=$(dirname "$0")
 # shellcheck source=SCRIPTDIR/bot-identity.sh
-source "$(dirname "$0")/bot-identity.sh"
+source "$scripts/bot-identity.sh"
 
 usage() {
   echo "Usage: $0 [--since YYYY-MM-DD] [--json]" >&2
@@ -13,6 +15,7 @@ usage() {
 }
 
 json=false
+# Sorts before every date: without --since every Intent is kept.
 since=0000-00-00
 while (($#)); do
   case $1 in
@@ -42,98 +45,64 @@ gh_read() {
   jq -s 'if length == 1 then .[0] else add // [] end' <<<"$out"
 }
 
+# The timeline of issue or PR #$1, every page of it.
+timeline() {
+  gh_read api --paginate "repos/{owner}/{repo}/issues/$1/timeline"
+}
+
 # Everything read from GitHub goes to files, never to arguments: timelines of
 # a long history would overflow the per-argument size limit.
 data=$(mktemp -d)
 trap 'rm -rf "$data"' EXIT
 
-gh_read pr list --state merged --limit 100000 \
+# `gh … list` has no "all": a limit far beyond this repo's size stands for it.
+all=100000
+gh_read pr list --state merged --limit "$all" \
   --json number,title,body,mergedAt,url,closingIssuesReferences >"$data/merged-prs.json"
-gh_read issue list --state all --label reversion --limit 100000 --json number,body \
+gh_read issue list --state all --label reversion --limit "$all" --json number,body \
   >"$data/reversion-issues.json"
 
 # What GitHub's revert button generates: a `Revert "…"` PR whose body says
 # `Reverts owner/repo#N`. It is a Reversion of PR #N, never an Intent.
-jq '[.[] | select(.title | startswith("Revert \""))]' "$data/merged-prs.json" >"$data/reverts.json"
+is_revert='(.title | startswith("Revert \""))'
+jq "[.[] | select($is_revert)]" "$data/merged-prs.json" >"$data/reverts.json"
 # Only issues of this repo are Intents: a PR may also close one elsewhere.
-jq '[.[] | select(.title | startswith("Revert \"") | not)
+jq "[.[] | select($is_revert | not)"'
   | (.url | sub("/pull/[0-9]+$"; "/issues/")) as $issues
   | .closingIssuesReferences |= map(select(.url | startswith($issues)))]' \
   "$data/merged-prs.json" >"$data/intent-prs.json"
 
-# The measured Intents: top-level issues closed by a merged PR (whose last
-# merge is on or after --since). A large Intent is measured at its Spec, so its
-# Work items (sub-issues) are skipped.
-candidates=$(jq --arg since "$since" '
-  [.[] | {mergedAt} + (.closingIssuesReferences[] | {number})]
+# The candidate Intents, each with the merged PRs that close it: the issues
+# closed by a merged PR, whose last merge is on or after --since.
+jq -c --arg since "$since" '
+  [.[] | {pr: .number, mergedAt} + (.closingIssuesReferences[] | {number})]
   | group_by(.number)[]
-  | select(map(.mergedAt) | max | .[0:10] >= $since) | .[0].number' "$data/intent-prs.json")
+  | select(map(.mergedAt) | max | .[0:10] >= $since)
+  | {number: .[0].number, prs: map(.pr) | sort}' "$data/intent-prs.json" >"$data/candidates.jsonl"
+
+# The measured Intents are the top-level candidates: a large Intent is measured
+# at its Spec, so its Work items (GitHub sub-issues, with a parent) are skipped.
 : >"$data/issues.jsonl"
-for n in $candidates; do
+while read -r candidate; do
+  n=$(jq '.number' <<<"$candidate")
   gh_read issue view "$n" --json number,title,createdAt,parent >"$data/issue.json"
   [[ $(jq '.parent' "$data/issue.json") == null ]] || continue
-  gh_read api --paginate "repos/{owner}/{repo}/issues/$n/timeline" >"$data/timeline.json"
-  jq -c --slurpfile timeline "$data/timeline.json" '. + {timeline: $timeline[0]}' \
-    "$data/issue.json" >>"$data/issues.jsonl"
-done
+  timeline "$n" >"$data/timeline.json"
+  jq -c --argjson candidate "$candidate" --slurpfile timeline "$data/timeline.json" \
+    '. + {prs: $candidate.prs, timeline: $timeline[0]}' "$data/issue.json" >>"$data/issues.jsonl"
+done <"$data/candidates.jsonl"
 
 # The timelines of the PRs that close a measured Intent.
 : >"$data/pr-timelines.jsonl"
-for n in $(jq --slurpfile issues "$data/issues.jsonl" '
-  ($issues | map(.number)) as $measured
-  | .[] | select(any(.closingIssuesReferences[]; .number as $n | $measured | index($n))) | .number' \
-  "$data/intent-prs.json"); do
-  gh_read api --paginate "repos/{owner}/{repo}/issues/$n/timeline" >"$data/timeline.json"
+for n in $(jq -s 'map(.prs[]) | unique[]' "$data/issues.jsonl"); do
+  timeline "$n" >"$data/timeline.json"
   jq -c --argjson n "$n" '{number: $n, timeline: .}' "$data/timeline.json" >>"$data/pr-timelines.jsonl"
 done
 
-metrics=$(jq -n --arg botEmail "$BOT_EMAIL" \
+metrics=$(jq -n -f "$scripts/factory-metrics.jq" --arg botEmail "$BOT_EMAIL" \
   --slurpfile prs "$data/intent-prs.json" --slurpfile reverts "$data/reverts.json" \
   --slurpfile reversionIssues "$data/reversion-issues.json" \
-  --slurpfile issues "$data/issues.jsonl" --slurpfile prTimelines "$data/pr-timelines.jsonl" '
-  $prs[0] as $prs | $reverts[0] as $reverts | $reversionIssues[0] as $reversionIssues
-  | def ts: fromdateiso8601;
-  def hours($from; $to): (($to | ts) - ($from | ts)) / 3600 * 10 | round / 10;
-  def human: .type != "Bot";
-  # Each human action in a timeline, as {at}: a review (its inline comments and
-  # thread replies are part of a review: GitHub wraps each reply in a review of
-  # its own), a comment, or a commit not authored by the bot.
-  def actions:
-    .[]
-    | if .event == "reviewed" and .state != "pending" and (.user | human) then {at: .submitted_at, review: .state, id}
-      elif .event == "commented" and (.actor | human) then {at: .created_at}
-      elif .event == "committed" and .author.email != $botEmail then {at: .committer.date}
-      else empty end;
-  # A merged PR'"'"'s actions, without the final approval that precedes its merge.
-  def pr_actions($pr):
-    [ $prTimelines[] | select(.number == $pr.number) | .timeline | actions | select(.at <= $pr.mergedAt) ]
-    | (map(select(.review == "approved")) | max_by(.at)) as $final
-    | map(select(. != $final));
-  def intents_of_prs($numbers):
-    [ $prs[] | select(.number as $n | $numbers | index($n)) | .closingIssuesReferences[].number ] | unique;
-  # Each Reversion, as the Intents of the PRs it reverts or that caused it.
-  ( [ $reverts[] | [ (.body // "") | scan("Reverts [^\\s#]*#([0-9]+)") | .[0] | tonumber ] ]
-    + [ $reversionIssues[] | [ (.body // "") | scan("Caused by [^\\s#]*#([0-9]+)"; "i") | .[0] | tonumber ] ]
-    | map(intents_of_prs(.)) ) as $reversions
-  | [ $issues[] as $issue
-    | [ $prs[] | select(any(.closingIssuesReferences[]; .number == $issue.number)) ] as $closing
-    | ($closing | map(.mergedAt) | max) as $lastMerge
-    | [ $issue.timeline[]
-        | select(.event == "labeled" and .label.name == "ready-for-agent" and .created_at <= $lastMerge) ]
-      as $alignments
-    | ($alignments | map(.created_at) | max) as $alignment
-    # Re-Alignment by the human is a touch: it happens at Alignment, not after.
-    | ($alignments | sort_by(.created_at) | .[1:] | map(select(.actor | human)) | length) as $realignments
-    | ([ $issue.timeline | actions ] + [ $closing[] as $pr | pr_actions($pr)[] ]
-       | map(select(.at > $alignment and .at <= $lastMerge)) | length + $realignments) as $touches
-    | { issue: $issue.number,
-        title: $issue.title,
-        prs: ($closing | map(.number) | sort),
-        leadTimeHours: hours($issue.createdAt; $lastMerge),
-        unattendedTimeHours: (if $alignment then hours($alignment; $lastMerge) else null end),
-        humanTouches: (if $alignment then $touches else null end),
-        reversions: ($reversions | map(select(index($issue.number))) | length) } ]
-  | sort_by(.issue)')
+  --slurpfile issues "$data/issues.jsonl" --slurpfile prTimelines "$data/pr-timelines.jsonl")
 
 if $json; then
   echo "$metrics"
@@ -141,9 +110,9 @@ if $json; then
 fi
 
 jq -r '
-  def hours: if . == null then "—" elif . == (. | floor) then "\(.).0" else tostring end;
+  def format_hours: if . == null then "—" elif . == (. | floor) then "\(.).0" else tostring end;
   def count: if . == null then "—" else tostring end;
   "| Issue | Title | PRs | Lead time (h) | Unattended time (h) | Human touches | Reversions |",
   "|---|---|---|---|---|---|---|",
-  (.[] | "| #\(.issue) | \(.title | gsub("\\|"; "\\|")) | \(.prs | map("#\(.)") | join(", ")) | \(.leadTimeHours | hours) | \(.unattendedTimeHours | hours) | \(.humanTouches | count) | \(.reversions) |")
+  (.[] | "| #\(.issue) | \(.title | gsub("\\|"; "\\|")) | \(.prs | map("#\(.)") | join(", ")) | \(.leadTimeHours | format_hours) | \(.unattendedTimeHours | format_hours) | \(.humanTouches | count) | \(.reversions) |")
 ' <<<"$metrics"
