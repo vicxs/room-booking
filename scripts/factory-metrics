@@ -41,16 +41,20 @@ reversion_issues=$(gh_read issue list --state all --label reversion --limit 1000
 reverts=$(jq '[.[] | select(.title | startswith("Revert \""))]' <<<"$merged_prs")
 intent_prs=$(jq '[.[] | select(.title | startswith("Revert \"") | not)]' <<<"$merged_prs")
 
+# The measured Intents: top-level issues closed by a merged PR. A large Intent
+# is measured at its Spec, so its Work items (sub-issues) are skipped.
 issues='{}'
 for n in $(jq '[.[].closingIssuesReferences[].number] | unique | .[]' <<<"$intent_prs"); do
   issue=$(gh_read issue view "$n" --json number,title,createdAt,parent)
+  [[ $(jq '.parent' <<<"$issue") == null ]] || continue
   timeline=$(gh_read api --paginate "repos/{owner}/{repo}/issues/$n/timeline")
   issues=$(jq --argjson issue "$issue" --argjson timeline "$timeline" \
     '.[$issue.number | tostring] = $issue + {timeline: $timeline}' <<<"$issues")
 done
 
 pr_timelines='{}'
-for n in $(jq '.[] | select(.closingIssuesReferences != []) | .number' <<<"$intent_prs"); do
+for n in $(jq --argjson issues "$issues" \
+  '.[] | select(any(.closingIssuesReferences[]; $issues[.number | tostring])) | .number' <<<"$intent_prs"); do
   timeline=$(gh_read api --paginate "repos/{owner}/{repo}/issues/$n/timeline")
   pr_timelines=$(jq --arg n "$n" --argjson timeline "$timeline" '.[$n] = $timeline' <<<"$pr_timelines")
 done

@@ -175,8 +175,15 @@ fixture timeline-7.json <<EOF
 ]
 EOF
 
+# Work item #13 of the Spec #12: a sub-issue, closed by PR #14.
+fixture issue-13.json <<'EOF'
+{"createdAt": "2026-04-01T00:00:00Z", "number": 13, "parent": {"number": 12, "title": "Administrators manage Rooms", "url": "https://github.com/acme/widgets/issues/12"}, "title": "Create a Room"}
+EOF
+
 fixture merged-prs.json <<'EOF'
 [
+  {"number": 14, "title": "Create a Room", "body": "Closes #13", "mergedAt": "2026-04-01T05:00:00Z", "url": "https://github.com/acme/widgets/pull/14",
+   "closingIssuesReferences": [{"number": 13, "url": "https://github.com/acme/widgets/issues/13"}]},
   {"number": 8, "title": "Revert \"Align the factory doc, part 2\"", "body": "Reverts acme/widgets#7\r\n\r\nCloses #11", "mergedAt": "2026-03-03T00:00:00Z", "url": "https://github.com/acme/widgets/pull/8",
    "closingIssuesReferences": [{"number": 11, "url": "https://github.com/acme/widgets/issues/11"}]},
   {"number": 7, "title": "Align the factory doc, part 2", "body": "Closes #5", "mergedAt": "2026-03-02T00:00:00Z", "url": "https://github.com/acme/widgets/pull/7",
@@ -215,6 +222,8 @@ expect "a reversion issue counts a Reversion on the Intent of the PR that caused
   "| #3 | Fail CI on non-bot commits | #4 | 8.0 | 5.0 | 6 | 1 |"
 [[ $output != *"#11"* && $output != *"#8"* ]] ||
   fail "a Revert PR, or the issue only it closes, is listed as an Intent. Output:"$'\n'"$output"
+expect "a sub-issue is not listed" 0 ""
+[[ $output != *"#13"* && $output != *"#14"* ]] || fail "a sub-issue is listed as an Intent. Output:"$'\n'"$output"
 
 if ((failures)); then
   echo "$failures failure(s)"
