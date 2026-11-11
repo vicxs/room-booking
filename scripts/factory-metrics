@@ -42,44 +42,57 @@ gh_read() {
   jq -s 'if length == 1 then .[0] else add // [] end' <<<"$out"
 }
 
-merged_prs=$(gh_read pr list --state merged --limit 100000 \
-  --json number,title,body,mergedAt,url,closingIssuesReferences)
-reversion_issues=$(gh_read issue list --state all --label reversion --limit 100000 --json number,body)
+# Everything read from GitHub goes to files, never to arguments: timelines of
+# a long history would overflow the per-argument size limit.
+data=$(mktemp -d)
+trap 'rm -rf "$data"' EXIT
+
+gh_read pr list --state merged --limit 100000 \
+  --json number,title,body,mergedAt,url,closingIssuesReferences >"$data/merged-prs.json"
+gh_read issue list --state all --label reversion --limit 100000 --json number,body \
+  >"$data/reversion-issues.json"
 
 # What GitHub's revert button generates: a `Revert "…"` PR whose body says
 # `Reverts owner/repo#N`. It is a Reversion of PR #N, never an Intent.
-reverts=$(jq '[.[] | select(.title | startswith("Revert \""))]' <<<"$merged_prs")
+jq '[.[] | select(.title | startswith("Revert \""))]' "$data/merged-prs.json" >"$data/reverts.json"
 # Only issues of this repo are Intents: a PR may also close one elsewhere.
-intent_prs=$(jq '[.[] | select(.title | startswith("Revert \"") | not)
+jq '[.[] | select(.title | startswith("Revert \"") | not)
   | (.url | sub("/pull/[0-9]+$"; "/issues/")) as $issues
-  | .closingIssuesReferences |= map(select(.url | startswith($issues)))]' <<<"$merged_prs")
+  | .closingIssuesReferences |= map(select(.url | startswith($issues)))]' \
+  "$data/merged-prs.json" >"$data/intent-prs.json"
 
 # The measured Intents: top-level issues closed by a merged PR (whose last
 # merge is on or after --since). A large Intent is measured at its Spec, so its
 # Work items (sub-issues) are skipped.
-issues='{}'
-for n in $(jq --arg since "$since" '
+candidates=$(jq --arg since "$since" '
   [.[] | {mergedAt} + (.closingIssuesReferences[] | {number})]
   | group_by(.number)[]
-  | select(map(.mergedAt) | max | .[0:10] >= $since) | .[0].number' <<<"$intent_prs"); do
-  issue=$(gh_read issue view "$n" --json number,title,createdAt,parent)
-  [[ $(jq '.parent' <<<"$issue") == null ]] || continue
-  timeline=$(gh_read api --paginate "repos/{owner}/{repo}/issues/$n/timeline")
-  issues=$(jq --argjson issue "$issue" --argjson timeline "$timeline" \
-    '.[$issue.number | tostring] = $issue + {timeline: $timeline}' <<<"$issues")
+  | select(map(.mergedAt) | max | .[0:10] >= $since) | .[0].number' "$data/intent-prs.json")
+: >"$data/issues.jsonl"
+for n in $candidates; do
+  gh_read issue view "$n" --json number,title,createdAt,parent >"$data/issue.json"
+  [[ $(jq '.parent' "$data/issue.json") == null ]] || continue
+  gh_read api --paginate "repos/{owner}/{repo}/issues/$n/timeline" >"$data/timeline.json"
+  jq -c --slurpfile timeline "$data/timeline.json" '. + {timeline: $timeline[0]}' \
+    "$data/issue.json" >>"$data/issues.jsonl"
 done
 
-pr_timelines='{}'
-for n in $(jq --argjson issues "$issues" \
-  '.[] | select(any(.closingIssuesReferences[]; $issues[.number | tostring])) | .number' <<<"$intent_prs"); do
-  timeline=$(gh_read api --paginate "repos/{owner}/{repo}/issues/$n/timeline")
-  pr_timelines=$(jq --arg n "$n" --argjson timeline "$timeline" '.[$n] = $timeline' <<<"$pr_timelines")
+# The timelines of the PRs that close a measured Intent.
+: >"$data/pr-timelines.jsonl"
+for n in $(jq --slurpfile issues "$data/issues.jsonl" '
+  ($issues | map(.number)) as $measured
+  | .[] | select(any(.closingIssuesReferences[]; .number as $n | $measured | index($n))) | .number' \
+  "$data/intent-prs.json"); do
+  gh_read api --paginate "repos/{owner}/{repo}/issues/$n/timeline" >"$data/timeline.json"
+  jq -c --argjson n "$n" '{number: $n, timeline: .}' "$data/timeline.json" >>"$data/pr-timelines.jsonl"
 done
 
-metrics=$(jq -n --argjson prs "$intent_prs" --argjson issues "$issues" \
-  --argjson prTimelines "$pr_timelines" --arg botEmail "$BOT_EMAIL" \
-  --argjson reverts "$reverts" --argjson reversionIssues "$reversion_issues" '
-  def ts: fromdateiso8601;
+metrics=$(jq -n --arg botEmail "$BOT_EMAIL" \
+  --slurpfile prs "$data/intent-prs.json" --slurpfile reverts "$data/reverts.json" \
+  --slurpfile reversionIssues "$data/reversion-issues.json" \
+  --slurpfile issues "$data/issues.jsonl" --slurpfile prTimelines "$data/pr-timelines.jsonl" '
+  $prs[0] as $prs | $reverts[0] as $reverts | $reversionIssues[0] as $reversionIssues
+  | def ts: fromdateiso8601;
   def hours($from; $to): (($to | ts) - ($from | ts)) / 3600 * 10 | round / 10;
   def human: .type != "Bot";
   # Each human action in a timeline, as {at}: a review (its inline comments and
@@ -87,20 +100,20 @@ metrics=$(jq -n --argjson prs "$intent_prs" --argjson issues "$issues" \
   # its own), a comment, or a commit not authored by the bot.
   def actions:
     .[]
-    | if .event == "reviewed" and .state != "pending" and (.user | human) then {at: .submitted_at, review: .state}
+    | if .event == "reviewed" and .state != "pending" and (.user | human) then {at: .submitted_at, review: .state, id}
       elif .event == "commented" and (.actor | human) then {at: .created_at}
       elif .event == "committed" and .author.email != $botEmail then {at: .committer.date}
       else empty end;
   # A merged PR'"'"'s actions, without the final approval that precedes its merge.
   def pr_actions($pr):
-    [ $prTimelines[$pr.number | tostring] | actions | select(.at <= $pr.mergedAt) ]
+    [ $prTimelines[] | select(.number == $pr.number) | .timeline | actions | select(.at <= $pr.mergedAt) ]
     | (map(select(.review == "approved")) | max_by(.at)) as $final
     | map(select(. != $final));
   def intents_of_prs($numbers):
     [ $prs[] | select(.number as $n | $numbers | index($n)) | .closingIssuesReferences[].number ] | unique;
   # Each Reversion, as the Intents of the PRs it reverts or that caused it.
-  ( [ $reverts[] | [ .body | scan("Reverts [^\\s#]*#([0-9]+)") | .[0] | tonumber ] ]
-    + [ $reversionIssues[] | [ .body | scan("Caused by [^\\s#]*#([0-9]+)"; "i") | .[0] | tonumber ] ]
+  ( [ $reverts[] | [ (.body // "") | scan("Reverts [^\\s#]*#([0-9]+)") | .[0] | tonumber ] ]
+    + [ $reversionIssues[] | [ (.body // "") | scan("Caused by [^\\s#]*#([0-9]+)"; "i") | .[0] | tonumber ] ]
     | map(intents_of_prs(.)) ) as $reversions
   | [ $issues[] as $issue
     | [ $prs[] | select(any(.closingIssuesReferences[]; .number == $issue.number)) ] as $closing
