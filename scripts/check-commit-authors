@@ -14,16 +14,30 @@ if [[ $# -ne 2 || -z $1 || -z $2 ]]; then
 fi
 base=$1 head=$2
 
+for side in base head; do
+  if ! git rev-parse --verify --quiet "${!side}^{commit}" >/dev/null; then
+    echo "Error: cannot resolve $side '${!side}' to a commit. Is the clone shallow" \
+      "or the commit not fetched? (In CI, check out with fetch-depth: 0.)" >&2
+    exit 2
+  fi
+done
+
 offending=$(git log --format='%ae%x09%h %an <%ae> %s' "$base..$head" |
-  awk -F '\t' -v bot="$BOT_EMAIL" '$1 != bot { print "  " $2 }')
+  awk -v bot="$BOT_EMAIL" '{
+    tab = index($0, "\t") # split on the first tab only: subjects may hold tabs
+    if (substr($0, 1, tab - 1) != bot) print "  " substr($0, tab + 1)
+  }')
 
 if [[ -n $offending ]]; then
   cat >&2 <<EOF
 These commits are not authored by the factory bot ($BOT_NAME <$BOT_EMAIL>):
 $offending
 
-Fix: re-author them as the bot and force-push the branch, e.g.
-  scripts/bot-git rebase $base --exec 'scripts/bot-git commit --amend --no-edit --reset-author --allow-empty'
+Fix: rebase onto the PR's base branch (e.g. origin/main), re-authoring every
+commit as the bot, and force-push. Only the outer call needs the wrapper: the
+--exec inherits the bot identity it exports.
+  git fetch origin
+  scripts/bot-git rebase origin/main --exec 'git commit --amend --no-edit --reset-author --allow-empty'
   scripts/bot-git push --force-with-lease
 Then always commit with scripts/bot-git, never plain git.
 EOF

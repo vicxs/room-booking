@@ -30,11 +30,12 @@ jobs:
           persist-credentials: false
       - name: Test the check
         run: scripts/tests/check-commit-authors.test.sh
+      # The checkout is the PR's merge commit (refs/pull/N/merge): its first
+      # parent is the current base branch and its second the PR head, so
+      # HEAD^1..HEAD^2 is exactly the PR's commits. The event payload's
+      # base.sha is not used: it can be stale after the base branch moves.
       - name: Check commit authors
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: scripts/check-commit-authors "$BASE_SHA" "$HEAD_SHA"
+        run: scripts/check-commit-authors HEAD^1 HEAD^2
 
   backend:
     name: backend
