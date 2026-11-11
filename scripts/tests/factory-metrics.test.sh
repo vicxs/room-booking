@@ -33,6 +33,8 @@ case "$1 $2" in
     for arg in "$@"; do
       if [[ $arg =~ ^repos/\{owner\}/\{repo\}/issues/([0-9]+)/timeline$ ]]; then
         file=timeline-${BASH_REMATCH[1]}.json
+      elif [[ $arg =~ ^repos/\{owner\}/\{repo\}/pulls/([0-9]+)/comments$ ]]; then
+        file=review-comments-${BASH_REMATCH[1]}.json
       fi
     done
     ;;
@@ -119,15 +121,24 @@ fixture timeline-3.json <<EOF
   {"event": "commented", "actor": $human, "user": $human, "id": 304, "created_at": "2026-02-01T09:00:00Z"}
 ]
 EOF
-# The review at 05:30 carries two inline comments: they belong to the review
-# and are not in the timeline. The reply at 06:00 in its thread is wrapped by
-# GitHub in a review of its own. 07:50 is the final approval.
+# As GitHub serves them: the timeline's review at 05:30 does not carry its two
+# inline comments; they are review comments of review 402. The reply at 06:00
+# in their thread is wrapped by GitHub in a review of its own, 403, which the
+# timeline leaves out; so is our bot's reply at 06:50. 07:50 is the final
+# approval.
+fixture review-comments-4.json <<EOF
+[
+  {"id": 4001, "pull_request_review_id": 402, "user": $human, "path": "scripts/check-commit-authors", "body": "Quote this.", "created_at": "2026-02-01T05:29:00Z", "updated_at": "2026-02-01T05:29:00Z"},
+  {"id": 4002, "pull_request_review_id": 402, "user": $human, "path": "scripts/check-commit-authors", "body": "And this.", "created_at": "2026-02-01T05:29:30Z", "updated_at": "2026-02-01T05:29:30Z"},
+  {"id": 4003, "pull_request_review_id": 403, "in_reply_to_id": 4001, "user": $human, "path": "scripts/check-commit-authors", "body": "Both, please.", "created_at": "2026-02-01T06:00:00Z", "updated_at": "2026-02-01T06:00:00Z"},
+  {"id": 4004, "pull_request_review_id": 408, "in_reply_to_id": 4001, "user": $bot, "path": "scripts/check-commit-authors", "body": "Done.", "created_at": "2026-02-01T06:50:00Z", "updated_at": "2026-02-01T06:50:00Z"}
+]
+EOF
 fixture timeline-4.json <<EOF
 [
   {"event": "committed", "sha": "62c7b8a", "author": {"name": "$BOT_NAME", "email": "$BOT_EMAIL", "date": "2026-02-01T04:00:00Z"}, "committer": {"name": "$BOT_NAME", "email": "$BOT_EMAIL", "date": "2026-02-01T04:00:00Z"}},
   {"event": "committed", "sha": "0cba0b9", "author": {"name": "Victor", "email": "victor@example.com", "date": "2026-02-01T05:00:00Z"}, "committer": {"name": "Victor", "email": "victor@example.com", "date": "2026-02-01T05:00:00Z"}},
-  {"event": "reviewed", "id": 402, "user": $human, "state": "commented", "submitted_at": "2026-02-01T05:30:00Z"},
-  {"event": "reviewed", "id": 403, "user": $human, "state": "commented", "submitted_at": "2026-02-01T06:00:00Z"},
+  {"event": "reviewed", "id": 402, "node_id": "PRR_kwDOQ402", "user": $human, "body": "Two nits inline.", "commit_id": "0cba0b9", "submitted_at": "2026-02-01T05:30:00Z", "state": "commented", "html_url": "https://github.com/acme/widgets/pull/4#pullrequestreview-402", "pull_request_url": "https://api.github.com/repos/acme/widgets/pulls/4", "author_association": "OWNER"},
   {"event": "commented", "actor": $human, "user": $human, "id": 404, "created_at": "2026-02-01T06:30:00Z"},
   {"event": "commented", "actor": $other_bot, "user": $other_bot, "id": 407, "created_at": "2026-02-01T06:40:00Z"},
   {"event": "commented", "actor": $bot, "user": $bot, "id": 405, "created_at": "2026-02-01T06:45:00Z"},
@@ -211,6 +222,9 @@ fixture merged-prs.json <<'EOF'
    "closingIssuesReferences": [{"number": 1, "url": "https://github.com/acme/widgets/issues/1"}]}
 ]
 EOF
+for pr in 2 6 7 10; do
+  echo '[]' | fixture "review-comments-$pr.json"
+done
 # #11 and the Revert PR #8 both point at PR #7: one Reversion. #17 has no
 # Revert PR: PR #4 was fixed forward.
 fixture reversion-issues.json <<'EOF'
@@ -229,6 +243,10 @@ expect "unattended time starts at the last ready-for-agent event" 0 "" \
 expect "human touches after Alignment: re-alignment, comments, a commit, reviews" 0 "" \
   "| #3 | Fail CI on non-bot commits | #4 | 8.0 | 5.0 | 8 |"
 expect "another bot's comment is a human touch: only our bot is not human" 0 "" \
+  "| #3 | Fail CI on non-bot commits | #4 | 8.0 | 5.0 | 8 |"
+expect "a review with inline comments counts once" 0 "" \
+  "| #3 | Fail CI on non-bot commits | #4 | 8.0 | 5.0 | 8 |"
+expect "a reply in a review thread counts once, though the timeline leaves it out" 0 "" \
   "| #3 | Fail CI on non-bot commits | #4 | 8.0 | 5.0 | 8 |"
 expect "an aligned Intent with only the final approval has no human touches" 0 "" \
   "| #9 | Quiet the generator | #10 | 2.0 | 1.0 | 0 | 0 |"

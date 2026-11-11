@@ -7,7 +7,8 @@
 #   --slurpfile reversionIssues  the issues labelled `reversion`
 #   --slurpfile issues      the measured Intents: {number, title, createdAt,
 #                           prs (the merged PRs closing it), timeline}
-#   --slurpfile prTimelines {number, timeline} of each PR closing an Intent
+#   --slurpfile prActivity  {number, timeline, reviewComments} of each PR
+#                           closing an Intent
 
 $prs[0] as $prs | $reverts[0] as $reverts | $reversionIssues[0] as $reversionIssues
 
@@ -17,11 +18,10 @@ def hours($from; $to): (($to | ts) - ($from | ts)) / 3600 * 10 | round / 10;
 # every source, the bot's login for events and its email for commits.
 def human: .login != $botLogin;
 
-# Each human action in a timeline, as {at}: a review (its inline comments and
-# thread replies are part of a review: GitHub wraps each reply in a review of
-# its own), a comment, or a commit not authored by the bot. A review carries
-# its `id` so that dropping the final approval (pr_actions) drops only that
-# review, never another one equal to it in time and state.
+# Each human action in a timeline, as {at}: a review, a comment, or a commit
+# not authored by the bot. A review carries its `id` so that dropping the
+# final approval (pr_actions) drops only that review, never another one equal
+# to it in time and state.
 def actions:
   .[]
   | if .event == "reviewed" and .state != "pending" and (.user | human) then {at: .submitted_at, review: .state, id}
@@ -29,9 +29,24 @@ def actions:
     elif .event == "committed" and .author.email != $botEmail then {at: .committer.date}
     else empty end;
 
+# Each human review the timeline leaves out, as {at}. Every review comment
+# (an inline comment or a reply in its thread) belongs to a review. A review
+# in the timeline already counts once, its inline comments included; but
+# GitHub wraps a reply, or a lone line comment, in a review of its own that
+# the timeline omits, so that one is counted from its comments.
+def omitted_reviews($timeline):
+  ($timeline | map(select(.event == "reviewed") | .id)) as $listed
+  | map(select(.user | human))
+  | group_by(.pull_request_review_id)[]
+  | select(.[0].pull_request_review_id as $id | $listed | index($id) | not)
+  | {at: map(.created_at) | min};
+
 # A merged PR's actions, without the final approval that precedes its merge.
 def pr_actions($pr):
-  [ $prTimelines[] | select(.number == $pr.number) | .timeline | actions | select(.at <= $pr.mergedAt) ]
+  [ $prActivity[] | select(.number == $pr.number)
+    | .timeline as $timeline
+    | ($timeline | actions), (.reviewComments | omitted_reviews($timeline))
+    | select(.at <= $pr.mergedAt) ]
   | (map(select(.review == "approved")) | max_by(.at)) as $final
   | map(select(. != $final));
 

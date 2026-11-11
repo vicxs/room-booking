@@ -92,18 +92,21 @@ while read -r candidate; do
     '. + {prs: $candidate.prs, timeline: $timeline[0]}' "$data/issue.json" >>"$data/issues.jsonl"
 done <"$data/candidates.jsonl"
 
-# The timelines of the PRs that close a measured Intent.
-: >"$data/pr-timelines.jsonl"
+# The timelines and review comments of the PRs that close a measured Intent.
+: >"$data/prs.jsonl"
 for n in $(jq -s 'map(.prs[]) | unique[]' "$data/issues.jsonl"); do
   timeline "$n" >"$data/timeline.json"
-  jq -c --argjson n "$n" '{number: $n, timeline: .}' "$data/timeline.json" >>"$data/pr-timelines.jsonl"
+  gh_read api --paginate "repos/{owner}/{repo}/pulls/$n/comments" >"$data/review-comments.json"
+  jq -nc --argjson n "$n" --slurpfile timeline "$data/timeline.json" \
+    --slurpfile reviewComments "$data/review-comments.json" \
+    '{number: $n, timeline: $timeline[0], reviewComments: $reviewComments[0]}' >>"$data/prs.jsonl"
 done
 
 # The bot's GitHub login is its git name, BOT_NAME.
 metrics=$(jq -n -f "$scripts/factory-metrics.jq" --arg botLogin "$BOT_NAME" --arg botEmail "$BOT_EMAIL" \
   --slurpfile prs "$data/intent-prs.json" --slurpfile reverts "$data/reverts.json" \
   --slurpfile reversionIssues "$data/reversion-issues.json" \
-  --slurpfile issues "$data/issues.jsonl" --slurpfile prTimelines "$data/pr-timelines.jsonl")
+  --slurpfile issues "$data/issues.jsonl" --slurpfile prActivity "$data/prs.jsonl")
 
 if $json; then
   echo "$metrics"
