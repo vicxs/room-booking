@@ -1,0 +1,17 @@
+spring:
+  application:
+    name: room-booking
+  datasource:
+    url: jdbc:postgresql://localhost:5432/roombooking
+    username: roombooking
+    password: roombooking
+  docker:
+    compose:
+      file: ../compose.yaml
+      lifecycle-management: start-only
+  mvc:
+    servlet:
+      path: /api
+  threads:
+    virtual:
+      enabled: true
