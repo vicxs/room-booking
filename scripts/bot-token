@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# Prints a short-lived (1 h) installation token for the factory's GitHub App, so
+# agents act as the bot and never as the human (see docs/factory.md, "Metrics").
+# Needs ~/.config/room-booking-bot/{app.json,private-key.pem}.
+set -euo pipefail
+
+dir="${ROOM_BOOKING_BOT_DIR:-$HOME/.config/room-booking-bot}"
+repo="vicxs/room-booking"
+app_id=$(python3 -c "import json,sys;print(json.load(open(sys.argv[1]))['id'])" "$dir/app.json")
+
+b64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
+now=$(date +%s)
+header=$(printf '{"alg":"RS256","typ":"JWT"}' | b64url)
+payload=$(printf '{"iat":%d,"exp":%d,"iss":"%s"}' $((now - 60)) $((now + 540)) "$app_id" | b64url)
+signature=$(printf '%s.%s' "$header" "$payload" | openssl dgst -sha256 -sign "$dir/private-key.pem" | b64url)
+jwt="$header.$payload.$signature"
+
+# App JWTs need the Bearer scheme, which `gh api` does not send.
+api() {
+  curl --fail-with-body -sS -X "$1" "https://api.github.com/$2" \
+    -H "Authorization: Bearer $jwt" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28"
+}
+json_field() { python3 -c "import json,sys;print(json.load(sys.stdin)[sys.argv[1]])" "$1"; }
+
+installation_id=$(api GET "repos/$repo/installation" | json_field id)
+api POST "app/installations/$installation_id/access_tokens" | json_field token

@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# `git` acting as the factory bot: commits are authored by it and pushes use its
+# installation token over HTTPS, whatever the remote's URL. Usage: scripts/bot-git commit ... / scripts/bot-git push ...
+set -euo pipefail
+
+name="vicxs-room-booking-bot[bot]"
+email="355296675+vicxs-room-booking-bot[bot]@users.noreply.github.com"
+token=$("$(dirname "$0")/bot-token")
+
+export GIT_AUTHOR_NAME="$name" GIT_AUTHOR_EMAIL="$email"
+export GIT_COMMITTER_NAME="$name" GIT_COMMITTER_EMAIL="$email"
+
+if [[ "${1:-}" == "push" ]]; then
+  shift
+  exec git -c credential.helper= \
+    -c "credential.helper=!f() { echo username=x-access-token; echo password=$token; }; f" \
+    -c "url.https://github.com/.pushInsteadOf=git@github.com:" \
+    push "$@"
+fi
+exec git "$@"

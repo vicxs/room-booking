@@ -10,11 +10,25 @@ This document is for humans. Agents don't need it: the principles are guaranteed
 
 | Principle | Mechanism that guarantees it |
 |---|---|
-| **Propose → Verify → Approve**: the agent proposes, deterministic checks verify, the human approves what is critical | CI as a required check, protected `main` (no direct pushes, neither agent nor human), mandatory CODEOWNER approval |
+| **Propose → Verify → Approve**: the agent proposes, deterministic checks verify, the human approves what is critical | CI as a required check, protected `main` (no direct pushes, neither agent nor human), mandatory CODEOWNER approval, agents acting as a bot identity |
 | **Whoever builds never verifies** | `/code-review` runs in clean-context sub-agents that only see the diff and the issue. The verifier provides evidence; it never approves or merges |
 | **Confidence is earned with evidence** | [Metrics](#metrics) and sampled Audit |
 
 Constraint for this stage: **we use Matt Pocock's skills as they are**. If a skill doesn't fully fit the process, we note it and leave it for later; we don't modify skills or create new ones.
+
+Noted mismatches:
+
+- `setup-pre-commit` installs Prettier. This repo formats with Biome (frontend) and Spotless (backend), so the hook follows the skill's structure (Husky + lint-staged, then typecheck and tests) with those tools instead.
+
+## Mechanisms in place
+
+What P0 set up, so the principles hold without relying on instructions:
+
+- **Protected `main`**: a repository ruleset with no bypass actors requires a PR, one approving review from a CODEOWNER (`.github/CODEOWNERS`), approval of the last push, resolved conversations and the `backend`, `frontend` and `e2e` checks of `.github/workflows/ci.yml`; force pushes and deletion are blocked. The repo is public because rulesets on private repos need a paid plan.
+- **CI** (all blocking): Spotless (palantir-java-format) and Error Prone with `-Werror`, unit and Testcontainers integration tests, ArchUnit boundaries, generation from `openapi.yaml` for both sides (the build fails if an implementation drifts from the Contract), Biome, TypeScript, Vitest, and Playwright E2E against the production build.
+- **Pre-commit** (`.husky/pre-commit`): formats staged files, then frontend typecheck and unit tests. Slow checks stay in CI.
+- **Agent identity**: agents act as the GitHub App `vicxs-room-booking-bot`, never with the human's credentials, so the human can approve their PRs and the metrics can tell agent from human. `scripts/bot-git` (commit and push) and `scripts/bot-gh` (`gh` commands) mint a one-hour installation token from the App's private key in `~/.config/room-booking-bot/`, which never enters the repo.
+- **Supply chain**: exact dependency versions, pnpm refuses versions published less than a day ago, and GitHub Actions are pinned by commit SHA.
 
 ## Autonomy levels
 

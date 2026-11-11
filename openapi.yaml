@@ -1,0 +1,40 @@
+openapi: 3.0.3
+info:
+  title: Room Booking API
+  version: 0.1.0
+  description: >-
+    The Contract of the room-booking app. It is the source of truth: the Spring
+    interfaces and the TypeScript client are generated from this file.
+servers:
+  - url: /api
+tags:
+  - name: health
+    description: Liveness of the service and its database.
+paths:
+  /health:
+    get:
+      tags: [health]
+      operationId: getHealth
+      summary: Report whether the service and its database are up.
+      responses:
+        "200":
+          description: The service and its database are up.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+        "503":
+          description: The service is running but its database is not reachable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+components:
+  schemas:
+    Health:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [UP, DOWN]
