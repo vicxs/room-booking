@@ -93,26 +93,30 @@ EOF
 fixture issue-3.json <<'EOF'
 {"createdAt": "2026-02-01T00:00:00Z", "number": 3, "parent": null, "title": "Fail CI on non-bot commits"}
 EOF
-# Human touches on it, as the trailing "touch" notes say: 6 in all.
+# Its 6 human touches: the re-Alignment at 03:00 and the comment at 04:00 here;
+# on PR #4 below, the human commit at 05:00, the review at 05:30, the reply at
+# 06:00 and the comment at 06:30. Not touches: the comment at 02:00 (before
+# Alignment), bot activity, a label change, the final approval and the
+# comment at 09:00 (after the merge). The timeline comes in two pages, as
+# `gh api --paginate` prints it.
 fixture timeline-3.json <<EOF
 [
   {"event": "labeled", "actor": $bot, "created_at": "2026-02-01T01:00:00Z", "label": {"name": "ready-for-agent"}},
   {"event": "commented", "actor": $human, "user": $human, "id": 301, "created_at": "2026-02-01T02:00:00Z"},
   {"event": "unlabeled", "actor": $human, "created_at": "2026-02-01T02:01:00Z", "label": {"name": "ready-for-agent"}},
   {"event": "labeled", "actor": $human, "created_at": "2026-02-01T03:00:00Z", "label": {"name": "ready-for-agent"}},
-  {"event": "commented", "actor": $bot, "user": $bot, "id": 302, "created_at": "2026-02-01T03:30:00Z"},
+  {"event": "commented", "actor": $bot, "user": $bot, "id": 302, "created_at": "2026-02-01T03:30:00Z"}
+]
+[
   {"event": "labeled", "actor": $human, "created_at": "2026-02-01T03:40:00Z", "label": {"name": "enhancement"}},
   {"event": "commented", "actor": $human, "user": $human, "id": 303, "created_at": "2026-02-01T04:00:00Z"},
   {"event": "closed", "actor": $human, "created_at": "2026-02-01T08:00:02Z"},
   {"event": "commented", "actor": $human, "user": $human, "id": 304, "created_at": "2026-02-01T09:00:00Z"}
 ]
 EOF
-# Notes: 02:00 comment is before Alignment; 03:00 re-application = touch;
-# 03:30 bot comment and 03:40 label change are not touches; 04:00 = touch;
-# 09:00 is after the merge.
-# PR #4: the review at 05:30 carries two inline comments (they live on the
-# review, not in the timeline) and 06:00 is a reply in its thread, which GitHub
-# wraps in a review of its own; 07:50 is the final approval.
+# The review at 05:30 carries two inline comments: they belong to the review
+# and are not in the timeline. The reply at 06:00 in its thread is wrapped by
+# GitHub in a review of its own. 07:50 is the final approval.
 fixture timeline-4.json <<EOF
 [
   {"event": "committed", "sha": "62c7b8a", "author": {"name": "$BOT_NAME", "email": "$BOT_EMAIL", "date": "2026-02-01T04:00:00Z"}, "committer": {"name": "$BOT_NAME", "email": "$BOT_EMAIL", "date": "2026-02-01T04:00:00Z"}},
@@ -191,7 +195,7 @@ fixture merged-prs.json <<'EOF'
   {"number": 6, "title": "Align the factory doc, part 1", "body": "Closes #5", "mergedAt": "2026-03-01T02:00:00Z", "url": "https://github.com/acme/widgets/pull/6",
    "closingIssuesReferences": [{"number": 5, "url": "https://github.com/acme/widgets/issues/5"}]},
   {"number": 10, "title": "Quiet the OpenAPI generator output", "body": "Closes #9", "mergedAt": "2026-02-10T02:00:00Z", "url": "https://github.com/acme/widgets/pull/10",
-   "closingIssuesReferences": [{"number": 9, "url": "https://github.com/acme/widgets/issues/9"}]},
+   "closingIssuesReferences": [{"number": 9, "url": "https://github.com/acme/widgets/issues/9"}, {"number": 77, "url": "https://github.com/other/repo/issues/77"}]},
   {"number": 4, "title": "Fail CI when a PR contains commits not authored by the bot", "body": "Closes #3", "mergedAt": "2026-02-01T08:00:00Z", "url": "https://github.com/acme/widgets/pull/4",
    "closingIssuesReferences": [{"number": 3, "url": "https://github.com/acme/widgets/issues/3"}]},
   {"number": 2, "title": "P0 Foundations: walking skeleton", "body": "Closes #1", "mergedAt": "2026-01-01T10:30:00Z", "url": "https://github.com/acme/widgets/pull/2",
@@ -242,6 +246,11 @@ expect "--since works with the table too" 0 "--since 2026-02-10" "| #5 |" "| #9 
 [[ $output != *"| #3 |"* ]] || fail "--since 2026-02-10 lists #3. Output:"$'\n'"$output"
 expect "--since after every merge lists nothing" 0 "--since 2026-03-03 --json"
 [[ $output == "[]" ]] || fail "--since 2026-03-03: unexpected output:"$'\n'"$output"
+
+status=0
+output=$(FAKE_GH_FIXTURES=$work/no-fixtures "$metrics" 2>&1) || status=$?
+[[ $status == 1 && $output == *"Error: 'gh pr list"*"failed"* && $output == *"HTTP 404"* ]] ||
+  fail "a gh failure: exit $status, expected 1 with a clear error. Output:"$'\n'"$output"
 
 for args in "--bogus" "--since" "--since 2026-3-1" "--since 2026-02-30" "--since yesterday" "extra"; do
   expect "'$args' is a usage error" 2 "$args" "Usage:"

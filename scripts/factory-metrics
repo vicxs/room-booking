@@ -49,7 +49,10 @@ reversion_issues=$(gh_read issue list --state all --label reversion --limit 1000
 # What GitHub's revert button generates: a `Revert "…"` PR whose body says
 # `Reverts owner/repo#N`. It is a Reversion of PR #N, never an Intent.
 reverts=$(jq '[.[] | select(.title | startswith("Revert \""))]' <<<"$merged_prs")
-intent_prs=$(jq '[.[] | select(.title | startswith("Revert \"") | not)]' <<<"$merged_prs")
+# Only issues of this repo are Intents: a PR may also close one elsewhere.
+intent_prs=$(jq '[.[] | select(.title | startswith("Revert \"") | not)
+  | (.url | sub("/pull/[0-9]+$"; "/issues/")) as $issues
+  | .closingIssuesReferences |= map(select(.url | startswith($issues)))]' <<<"$merged_prs")
 
 # The measured Intents: top-level issues closed by a merged PR (whose last
 # merge is on or after --since). A large Intent is measured at its Spec, so its
