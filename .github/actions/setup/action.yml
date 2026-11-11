@@ -1,5 +1,9 @@
 name: Set up toolchain
 description: Java, Node.js and pnpm at the versions pinned in the repo, with dependency caches.
+inputs:
+  maven-cache:
+    description: Cache the Maven repository (only for jobs that run Maven).
+    default: "true"
 runs:
   using: composite
   steps:
@@ -7,8 +11,8 @@ runs:
       with:
         distribution: temurin
         java-version: "21"
-        cache: maven
-        cache-dependency-path: backend/pom.xml
+        cache: ${{ inputs.maven-cache == 'true' && 'maven' || '' }}
+        cache-dependency-path: ${{ inputs.maven-cache == 'true' && 'backend/pom.xml' || '' }}
     - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
     - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
       with:
