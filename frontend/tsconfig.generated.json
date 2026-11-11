@@ -1,0 +1,24 @@
+{
+  // The Contract client generated from ../openapi.yaml, compiled on its own so
+  // the stricter options in tsconfig.app.json apply only to hand-written code
+  // (the generator's output does not pass them). App code imports it as
+  // `@/api/generated` and is type-checked against the declarations emitted
+  // here, so Contract drift still fails compilation. This file lives outside
+  // the generated directory, which is regenerated and git-ignored.
+  "compilerOptions": {
+    "composite": true,
+    "emitDeclarationOnly": true,
+    "rootDir": "./src/api/generated",
+    "outDir": "./node_modules/.tmp/generated",
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.generated.tsbuildinfo",
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "types": [],
+    "strict": true,
+    "isolatedModules": true,
+    "skipLibCheck": true
+  },
+  "include": ["src/api/generated"]
+}

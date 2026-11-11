@@ -10,7 +10,7 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "pretypecheck": "pnpm generate:api",
-    "typecheck": "tsc -b --noEmit",
+    "typecheck": "tsc -b",
     "lint": "biome ci .",
     "format": "biome check --write .",
     "pretest": "pnpm generate:api",

@@ -9,11 +9,18 @@
     "types": ["vite/client", "vitest/globals", "@testing-library/jest-dom"],
     "paths": { "@/*": ["./src/*"] },
     "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noUncheckedIndexedAccess": true,
     "noFallthroughCasesInSwitch": true,
     "verbatimModuleSyntax": false,
     "isolatedModules": true,
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": ["src"]
+  "include": ["src"],
+  // The generated Contract client is its own project (see tsconfig.generated.json):
+  // imports of `@/api/generated` resolve to its emitted declarations.
+  "exclude": ["src/api/generated"],
+  "references": [{ "path": "./tsconfig.generated.json" }]
 }
