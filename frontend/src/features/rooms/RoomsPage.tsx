@@ -1,28 +1,53 @@
-import { CircleAlert, DoorOpen, LoaderCircle, RotateCw } from "lucide-react";
-import type { ReactNode } from "react";
+import { CircleAlert, DoorOpen, LoaderCircle, Plus, RotateCw } from "lucide-react";
+import { type ReactNode, useState } from "react";
 import { type Room, RoomStatus } from "@/api/generated";
-import { ApiError } from "@/api/problem";
+import { explain } from "@/api/problem";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
-import { useRooms } from "./useRooms";
+import { RoomDialog } from "./RoomDialog";
+import { useCreateRoom, useRooms } from "./useRooms";
 
 export function RoomsPage() {
+  const [creating, setCreating] = useState(false);
+  const createRoom = useCreateRoom();
+  const startCreating = () => setCreating(true);
+
   return (
     <main className="mx-auto w-full max-w-4xl px-4 py-10 sm:px-6">
-      <header className="mb-6 space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Rooms</h1>
-        <p className="text-sm text-muted-foreground">Every room Employees can book, active and deactivated.</p>
+      <header className="mb-6 flex flex-wrap items-center justify-between gap-4">
+        <div className="space-y-1">
+          <h1 className="text-2xl font-semibold tracking-tight">Rooms</h1>
+          <p className="text-sm text-muted-foreground">Every room Employees can book, active and deactivated.</p>
+        </div>
+        <NewRoomButton onClick={startCreating} />
       </header>
       <section className="rounded-lg border bg-card text-card-foreground shadow-sm">
-        <RoomsContent />
+        <RoomsContent onCreate={startCreating} />
       </section>
+      <RoomDialog
+        open={creating}
+        onOpenChange={setCreating}
+        title="New room"
+        description="Rooms are told apart by name, so it must be unique."
+        submitLabel="Create room"
+        onSave={createRoom.mutateAsync}
+      />
     </main>
   );
 }
 
-function RoomsContent() {
+function NewRoomButton({ onClick }: { onClick: () => void }) {
+  return (
+    <Button onClick={onClick}>
+      <Plus aria-hidden />
+      New room
+    </Button>
+  );
+}
+
+function RoomsContent({ onCreate }: { onCreate: () => void }) {
   const rooms = useRooms();
 
   if (rooms.isPending) {
@@ -61,19 +86,15 @@ function RoomsContent() {
           <DoorOpen aria-hidden className="size-6 text-muted-foreground" />
           <div className="space-y-1">
             <p className="font-medium">No rooms yet</p>
-            <p className="text-sm text-muted-foreground">Rooms appear here once they are created.</p>
+            <p className="text-sm text-muted-foreground">Create the first room Employees can book.</p>
           </div>
+          <NewRoomButton onClick={onCreate} />
         </div>
       </Message>
     );
   }
 
   return <RoomsTable rooms={rooms.data} />;
-}
-
-function explain(error: Error): string {
-  if (error instanceof ApiError && error.problem) return error.problem.detail ?? error.problem.title;
-  return "Check your connection and try again.";
 }
 
 function Message({ children }: { children: ReactNode }) {
