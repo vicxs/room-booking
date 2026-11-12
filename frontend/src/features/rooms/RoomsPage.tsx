@@ -113,18 +113,18 @@ function RoomsContent({ onCreate, ...actions }: { onCreate: () => void } & RoomA
 
   if (rooms.isPending) {
     return (
-      <Message>
+      <StatePanel>
         <div role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
           <LoaderCircle aria-hidden className="size-4 animate-spin" />
           Loading rooms…
         </div>
-      </Message>
+      </StatePanel>
     );
   }
 
   if (rooms.isError) {
     return (
-      <Message>
+      <StatePanel>
         <div role="alert" className="flex flex-col items-center gap-3 text-center">
           <CircleAlert aria-hidden className="size-6 text-destructive" />
           <div className="space-y-1">
@@ -136,13 +136,13 @@ function RoomsContent({ onCreate, ...actions }: { onCreate: () => void } & RoomA
             Try again
           </Button>
         </div>
-      </Message>
+      </StatePanel>
     );
   }
 
   if (rooms.data.length === 0) {
     return (
-      <Message>
+      <StatePanel>
         <div className="flex flex-col items-center gap-3 text-center">
           <DoorOpen aria-hidden className="size-6 text-muted-foreground" />
           <div className="space-y-1">
@@ -151,14 +151,15 @@ function RoomsContent({ onCreate, ...actions }: { onCreate: () => void } & RoomA
           </div>
           <NewRoomButton onClick={onCreate} />
         </div>
-      </Message>
+      </StatePanel>
     );
   }
 
   return <RoomsTable rooms={rooms.data} {...actions} />;
 }
 
-function Message({ children }: { children: ReactNode }) {
+/** A centred panel in place of the table, for the loading, error and empty states. */
+function StatePanel({ children }: { children: ReactNode }) {
   return <div className="flex min-h-48 items-center justify-center px-6 py-12">{children}</div>;
 }
 
