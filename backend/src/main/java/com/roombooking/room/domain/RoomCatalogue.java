@@ -3,6 +3,7 @@ package com.roombooking.room.domain;
 import static java.util.Objects.requireNonNull;
 
 import java.util.List;
+import java.util.UUID;
 
 /** The catalogue of Rooms that Administrators manage. */
 public final class RoomCatalogue {
@@ -29,5 +30,22 @@ public final class RoomCatalogue {
         if (rooms.nameTakenByAnotherRoom(room)) throw new RoomNameTakenException(room.name());
         rooms.add(room);
         return room;
+    }
+
+    /**
+     * Replaces the name, trimmed at both ends, and the capacity of a Room, active or deactivated. Its status stays as
+     * it is. The Room's own name does not count as taken, so a case-only rename or an unchanged Room is accepted.
+     *
+     * @return the Room as it now is.
+     * @throws RoomNotFoundException if no Room has the id.
+     * @throws InvalidRoomException if the name is blank once trimmed.
+     * @throws RoomNameTakenException if another Room has the name, ignoring case.
+     */
+    public Room update(UUID id, String name, int capacity) {
+        Room room = rooms.withId(id)
+                .orElseThrow(() -> new RoomNotFoundException(id))
+                .withNameAndCapacity(name, capacity);
+        if (rooms.nameTakenByAnotherRoom(room)) throw new RoomNameTakenException(room.name());
+        return rooms.updateNameAndCapacity(room);
     }
 }
