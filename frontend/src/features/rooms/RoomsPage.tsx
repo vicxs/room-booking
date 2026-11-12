@@ -13,16 +13,13 @@ import { useCreateRoom, useDeactivateRoom, useReactivateRoom, useRooms, useUpdat
 
 export function RoomsPage() {
   const [creating, setCreating] = useState(false);
-  // Each Room stays set while its dialog animates closed, so the content does not change as it fades out.
-  const [editing, setEditing] = useState<{ room: Room; open: boolean }>();
-  const [deactivating, setDeactivating] = useState<{ room: Room; open: boolean }>();
+  const [editing, startEditing] = useRoomDialog();
+  const [deactivating, startDeactivating] = useRoomDialog();
   const createRoom = useCreateRoom();
   const updateRoom = useUpdateRoom();
   const deactivateRoom = useDeactivateRoom();
   const reactivateRoom = useReactivateRoom();
   const startCreating = () => setCreating(true);
-  const startEditing = (room: Room) => setEditing({ room, open: true });
-  const startDeactivating = (room: Room) => setDeactivating({ room, open: true });
 
   return (
     <main className="mx-auto w-full max-w-4xl px-4 py-10 sm:px-6">
@@ -61,7 +58,7 @@ export function RoomsPage() {
       {editing && (
         <RoomDialog
           open={editing.open}
-          onOpenChange={(open) => setEditing({ ...editing, open })}
+          onOpenChange={editing.onOpenChange}
           title="Edit room"
           description="Change the room's name or capacity."
           submitLabel="Save changes"
@@ -73,12 +70,25 @@ export function RoomsPage() {
         <DeactivateRoomDialog
           room={deactivating.room}
           open={deactivating.open}
-          onOpenChange={(open) => setDeactivating({ ...deactivating, open })}
+          onOpenChange={deactivating.onOpenChange}
           onDeactivate={() => deactivateRoom.mutateAsync(deactivating.room)}
         />
       )}
     </main>
   );
+}
+
+/** The state of a dialog about one Room: which Room, and whether it is open. */
+type RoomDialogState = { room: Room; open: boolean; onOpenChange: (open: boolean) => void };
+
+/**
+ * A dialog about one Room at a time, with a function that opens it for a Room. It is undefined until first opened;
+ * afterwards the Room stays set while the dialog animates closed, so the content does not change as it fades out.
+ */
+function useRoomDialog(): [RoomDialogState | undefined, (room: Room) => void] {
+  const [target, setTarget] = useState<{ room: Room; open: boolean }>();
+  const dialog = target && { ...target, onOpenChange: (open: boolean) => setTarget({ ...target, open }) };
+  return [dialog, (room) => setTarget({ room, open: true })];
 }
 
 function NewRoomButton({ onClick }: { onClick: () => void }) {
