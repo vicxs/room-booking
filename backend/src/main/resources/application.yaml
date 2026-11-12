@@ -9,9 +9,19 @@ spring:
     compose:
       file: ../compose.yaml
       lifecycle-management: start-only
+  jooq:
+    sql-dialect: postgres
   mvc:
     servlet:
       path: /api
   threads:
     virtual:
       enabled: true
+  # Error messages are in English whatever the client's Accept-Language (ADR-0003).
+  web:
+    locale: en
+    locale-resolver: fixed
+logging:
+  level:
+    # jOOQ's start-up banner and "tip of the day".
+    org.jooq.Constants: warn
