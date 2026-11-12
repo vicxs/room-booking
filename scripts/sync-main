@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# SessionStart hook (.claude/settings.json): fetches origin so sessions and agent
+# worktrees start from a fresh base, and fast-forwards main to origin/main when
+# main is the checked-out branch and has no uncommitted changes to tracked files.
+# It never discards or rewrites local work, and it always exits 0: a failure
+# (offline, diverged main) must not block the session. What it prints reaches
+# the session's context, so it only speaks when something is worth knowing.
+# Usage: scripts/sync-main (inside the checkout to sync)
+set -uo pipefail
+
+export GIT_TERMINAL_PROMPT=0 # never wait on a credential prompt
+
+note() { printf 'sync-main: %s\n' "$*"; }
+
+git rev-parse --git-dir >/dev/null 2>&1 || exit 0
+
+if ! git fetch --quiet origin >/dev/null 2>&1; then
+  note "could not fetch origin (offline?), so main and origin/main may be stale."
+  exit 0
+fi
+
+[[ $(git symbolic-ref --quiet --short HEAD) == main ]] || exit 0
+git rev-parse --verify --quiet origin/main >/dev/null || exit 0
+# Up to date, or ahead with local commits: nothing to fast-forward.
+git merge-base --is-ancestor origin/main HEAD && exit 0
+
+if ! git merge-base --is-ancestor HEAD origin/main; then
+  note "main has diverged from origin/main; left as is."
+  exit 0
+fi
+if [[ -n $(git status --porcelain --untracked-files=no) ]]; then
+  note "main is behind origin/main but has uncommitted changes; not fast-forwarded."
+  exit 0
+fi
+# Untracked files the fast-forward would overwrite make git refuse before
+# changing anything.
+if git merge --quiet --ff-only origin/main >/dev/null 2>&1; then
+  note "fast-forwarded main to origin/main ($(git rev-parse --short HEAD))."
+else
+  note "could not fast-forward main to origin/main (untracked files in the way?); left as is."
+fi
+exit 0

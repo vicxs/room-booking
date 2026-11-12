@@ -30,6 +30,12 @@ jobs:
           persist-credentials: false
       - name: Test the check
         run: scripts/tests/check-commit-authors.test.sh
+      # The other factory scripts are checked here too: this is the job that
+      # owns scripts/, and the ruleset's required checks are a fixed list.
+      - name: ShellCheck the factory scripts
+        run: git ls-files -z scripts | xargs -0 shellcheck
+      - name: Test the SessionStart hook
+        run: scripts/tests/sync-main.test.sh
       # The checkout is the PR's merge commit (refs/pull/N/merge): its first
       # parent is the current base branch and its second the PR head, so
       # HEAD^1..HEAD^2 is exactly the PR's commits. The event payload's
