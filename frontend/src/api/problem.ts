@@ -23,6 +23,12 @@ export async function callApi<T>(call: () => Promise<T>): Promise<T> {
   }
 }
 
+/** A sentence for the user saying why a call failed: the server's own words, or a hint when it was not reached. */
+export function explain(error: Error): string {
+  if (error instanceof ApiError && error.problem) return error.problem.detail ?? error.problem.title;
+  return "Check your connection and try again.";
+}
+
 async function readProblem(error: unknown): Promise<Problem | undefined> {
   if (!(error instanceof ResponseError)) return undefined;
   if (!error.response.headers.get("Content-Type")?.startsWith("application/problem+json")) return undefined;

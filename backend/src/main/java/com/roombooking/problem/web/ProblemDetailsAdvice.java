@@ -1,7 +1,6 @@
 package com.roombooking.problem.web;
 
 import com.roombooking.contract.model.FieldError;
-import java.util.Comparator;
 import java.util.List;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -25,18 +24,14 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExcep
 @RestControllerAdvice
 class ProblemDetailsAdvice extends ResponseEntityExceptionHandler {
 
-    private static final Comparator<FieldError> BY_FIELD_THEN_MESSAGE =
-            Comparator.comparing(FieldError::getField).thenComparing(FieldError::getMessage);
-
     @Override
     protected @Nullable ResponseEntity<Object> handleMethodArgumentNotValid(
             MethodArgumentNotValidException exception, HttpHeaders headers, HttpStatusCode status, WebRequest request) {
         List<FieldError> errors = exception.getBindingResult().getFieldErrors().stream()
                 .map(error -> new FieldError(error.getField(), error.getDefaultMessage()))
-                .sorted(BY_FIELD_THEN_MESSAGE)
                 .toList();
         ProblemDetail problem = exception.getBody();
-        problem.setProperty("errors", errors);
+        Problems.addErrors(problem, errors);
         return handleExceptionInternal(exception, problem, headers, status, request);
     }
 

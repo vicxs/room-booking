@@ -11,5 +11,11 @@ public record Room(UUID id, String name, int capacity, RoomStatus status) {
         requireNonNull(id);
         requireNonNull(name);
         requireNonNull(status);
+        if (name.isBlank()) throw new InvalidRoomException("name", "must not be blank");
+    }
+
+    /** A new active Room with a random id, its name trimmed at both ends and its inner whitespace kept as typed. */
+    static Room create(String name, int capacity) {
+        return new Room(UUID.randomUUID(), name.strip(), capacity, RoomStatus.ACTIVE);
     }
 }

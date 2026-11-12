@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { RoomsPage } from "./RoomsPage";
 
@@ -18,6 +18,12 @@ function serverReplies(...replies: Reply[]) {
   });
   vi.stubGlobal("fetch", fetch);
   return fetch;
+}
+
+/** The JSON body of the nth request the page sent, counting from 0. */
+function requestBody(fetch: ReturnType<typeof serverReplies>, n: number): unknown {
+  const [, init] = fetch.mock.calls[n] as unknown as [RequestInfo, RequestInit];
+  return JSON.parse(String(init.body));
 }
 
 function renderPage() {
@@ -116,6 +122,183 @@ test("shows the server's explanation when the rooms cannot be loaded, and retrie
   expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   expect(fetch).toHaveBeenCalledTimes(2);
 });
+
+describe("creating a room", () => {
+  const salaA = { id: "6f1c0a3e-1111-4c1a-9a40-000000000001", name: "Sala A", capacity: 4, status: "ACTIVE" };
+
+  test("creates the room, closes the dialog and refetches the list", async () => {
+    const fetch = serverReplies(json(200, []), json(201, salaA), json(200, [salaA]));
+    renderPage();
+
+    await userEvent.click(await screen.findByRole("button", { name: "New room" }));
+    const dialog = screen.getByRole("dialog", { name: "New room" });
+    await userEvent.type(within(dialog).getByLabelText("Name"), "Sala A");
+    await userEvent.type(within(dialog).getByLabelText("Capacity"), "4");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Create room" }));
+
+    expect(await screen.findByRole("cell", { name: "Sala A" })).toBeVisible();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(fetch).toHaveBeenCalledTimes(3);
+    expect(requestBody(fetch, 1)).toEqual({ name: "Sala A", capacity: 4 });
+  });
+
+  test("offers to create the first room when there are none", async () => {
+    serverReplies(json(200, []));
+    renderPage();
+
+    const emptyState = (await screen.findByText("No rooms yet")).closest("div")?.parentElement as HTMLElement;
+    await userEvent.click(within(emptyState).getByRole("button", { name: "New room" }));
+
+    expect(screen.getByRole("dialog", { name: "New room" })).toBeVisible();
+  });
+
+  test("flags a missing name and capacity without sending anything", async () => {
+    const fetch = serverReplies(json(200, []));
+    const dialog = await openNewRoomDialog();
+
+    await userEvent.type(within(dialog).getByLabelText("Name"), "   ");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Create room" }));
+
+    expect(within(dialog).getByLabelText("Name")).toHaveAccessibleDescription("Enter a name.");
+    expect(within(dialog).getByLabelText("Name")).toHaveFocus();
+    expect(within(dialog).getByLabelText("Capacity")).toHaveAccessibleDescription("Enter a capacity.");
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  test("flags a name over 100 characters and a capacity that is not a whole number of at least 1", async () => {
+    const fetch = serverReplies(json(200, []));
+    const dialog = await openNewRoomDialog();
+    const capacity = within(dialog).getByLabelText("Capacity");
+
+    await userEvent.type(within(dialog).getByLabelText("Name"), "x".repeat(101));
+    await userEvent.type(capacity, "0");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Create room" }));
+
+    expect(within(dialog).getByLabelText("Name")).toHaveAccessibleDescription("Use at most 100 characters.");
+    expect(capacity).toHaveAccessibleDescription("Enter a whole number of at least 1.");
+
+    await userEvent.clear(capacity);
+    await userEvent.type(capacity, "2.5");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Create room" }));
+
+    expect(capacity).toHaveAccessibleDescription("Enter a whole number of at least 1.");
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  test("clears a field's error as soon as it is edited", async () => {
+    serverReplies(json(200, []));
+    const dialog = await openNewRoomDialog();
+    const name = within(dialog).getByLabelText("Name");
+
+    await userEvent.click(within(dialog).getByRole("button", { name: "Create room" }));
+    await userEvent.type(name, "S");
+
+    expect(name).not.toHaveAccessibleDescription("Enter a name.");
+    expect(name).toBeValid();
+  });
+
+  test("shows each field the server rejects under that field, keeping the input", async () => {
+    serverReplies(
+      json(200, []),
+      json(
+        400,
+        {
+          type: "about:blank",
+          title: "Bad Request",
+          status: 400,
+          detail: "Invalid request content.",
+          errors: [
+            { field: "capacity", message: "must be greater than or equal to 1" },
+            { field: "name", message: "must not be blank" },
+          ],
+        },
+        "application/problem+json",
+      ),
+    );
+    const dialog = await fillNewRoomDialog("Sala A", "4");
+
+    await userEvent.click(within(dialog).getByRole("button", { name: "Create room" }));
+
+    const name = within(dialog).getByLabelText("Name");
+    await waitFor(() => expect(name).toHaveAccessibleDescription("must not be blank"));
+    expect(within(dialog).getByLabelText("Capacity")).toHaveAccessibleDescription("must be greater than or equal to 1");
+    expect(within(dialog).queryByRole("alert")).not.toBeInTheDocument();
+    expect(name).toHaveValue("Sala A");
+    expect(within(dialog).getByLabelText("Capacity")).toHaveValue(4);
+  });
+
+  test("shows a taken name under the name field, keeping the input", async () => {
+    serverReplies(
+      json(200, []),
+      json(
+        409,
+        {
+          type: "urn:room-booking:problem:room-name-taken",
+          title: "Room name taken",
+          status: 409,
+          detail: 'The name "Sala A" is already taken.',
+        },
+        "application/problem+json",
+      ),
+    );
+    const dialog = await fillNewRoomDialog("Sala A", "4");
+
+    await userEvent.click(within(dialog).getByRole("button", { name: "Create room" }));
+
+    const name = within(dialog).getByLabelText("Name");
+    await waitFor(() => expect(name).toHaveAccessibleDescription('The name "Sala A" is already taken.'));
+    expect(name).toHaveFocus();
+    expect(name).toHaveValue("Sala A");
+    expect(within(dialog).getByLabelText("Capacity")).toHaveValue(4);
+  });
+
+  test("shows any other failure as a general message, keeping the input", async () => {
+    serverReplies(
+      json(200, []),
+      json(
+        500,
+        { type: "about:blank", title: "Internal Server Error", status: 500, detail: "An unexpected error occurred." },
+        "application/problem+json",
+      ),
+    );
+    const dialog = await fillNewRoomDialog("Sala A", "4");
+
+    await userEvent.click(within(dialog).getByRole("button", { name: "Create room" }));
+
+    const alert = await within(dialog).findByRole("alert");
+    expect(alert).toHaveTextContent("The room could not be saved");
+    expect(alert).toHaveTextContent("An unexpected error occurred.");
+    expect(within(dialog).getByLabelText("Name")).toHaveValue("Sala A");
+    expect(within(dialog).getByLabelText("Capacity")).toHaveValue(4);
+    expect(within(dialog).getByRole("button", { name: "Create room" })).toBeEnabled();
+  });
+
+  test("starts afresh when opened again", async () => {
+    serverReplies(json(200, []));
+    const dialog = await fillNewRoomDialog("Sala A", "4");
+
+    await userEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+    await userEvent.click(screen.getAllByRole("button", { name: "New room" })[0] as HTMLElement);
+
+    const reopened = screen.getByRole("dialog", { name: "New room" });
+    expect(within(reopened).getByLabelText("Name")).toHaveValue("");
+    expect(within(reopened).getByLabelText("Capacity")).toHaveValue(null);
+  });
+});
+
+async function openNewRoomDialog() {
+  renderPage();
+  await screen.findByText("No rooms yet");
+  await userEvent.click(screen.getAllByRole("button", { name: "New room" })[0] as HTMLElement);
+  return screen.getByRole("dialog", { name: "New room" });
+}
+
+async function fillNewRoomDialog(name: string, capacity: string) {
+  const dialog = await openNewRoomDialog();
+  await userEvent.type(within(dialog).getByLabelText("Name"), name);
+  await userEvent.type(within(dialog).getByLabelText("Capacity"), capacity);
+  return dialog;
+}
 
 test("suggests checking the connection when the server cannot be reached", async () => {
   serverReplies(async () => {

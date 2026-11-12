@@ -56,8 +56,8 @@
         </dependency>
         <dependency>
             <groupId>org.postgresql</groupId>
+            <!-- Compile scope: persistence adapters read the violated constraint's name from PSQLException. -->
             <artifactId>postgresql</artifactId>
-            <scope>runtime</scope>
         </dependency>
         <dependency>
             <groupId>org.openapitools</groupId>
