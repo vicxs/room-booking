@@ -34,6 +34,10 @@ pnpm -C frontend lint                  # Biome
 pnpm -C frontend typecheck
 pnpm -C frontend test                  # Vitest
 cd backend && ./mvnw -DskipTests package && pnpm -C frontend e2e   # Playwright against the production build
+git ls-files -z -- scripts ':(exclude)*.jq' | xargs -0 shellcheck   # these run in CI's identity job
+scripts/tests/check-commit-authors.test.sh
+scripts/tests/sync-main.test.sh
+scripts/tests/factory-metrics.test.sh
 ```
 
 The Spring interfaces and the TypeScript client are generated from `openapi.yaml` on every build; never edit or commit them.

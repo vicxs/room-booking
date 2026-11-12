@@ -15,7 +15,9 @@ concurrency:
 
 jobs:
   # Every commit a PR adds must be authored by the factory bot (docs/factory.md,
-  # "Agent identity"). Skipped outside PRs; a skipped job counts as passing.
+  # "Agent identity"). The job also runs the tests of the factory's shell
+  # scripts: the commit-author check and scripts/factory-metrics (docs/factory.md,
+  # "Metrics"). Skipped outside PRs; a skipped job counts as passing.
   identity:
     name: identity
     if: github.event_name == 'pull_request'
@@ -32,10 +34,13 @@ jobs:
         run: scripts/tests/check-commit-authors.test.sh
       # The other factory scripts are checked here too: this is the job that
       # owns scripts/, and the ruleset's required checks are a fixed list.
+      # Not every file under scripts/ is shell: jq programs are skipped.
       - name: ShellCheck the factory scripts
-        run: git ls-files -z scripts | xargs -0 shellcheck
+        run: git ls-files -z -- scripts ':(exclude)*.jq' | xargs -0 shellcheck
       - name: Test the SessionStart hook
         run: scripts/tests/sync-main.test.sh
+      - name: Test the factory metrics
+        run: scripts/tests/factory-metrics.test.sh
       # The checkout is the PR's merge commit (refs/pull/N/merge): its first
       # parent is the current base branch and its second the PR head, so
       # HEAD^1..HEAD^2 is exactly the PR's commits. The event payload's

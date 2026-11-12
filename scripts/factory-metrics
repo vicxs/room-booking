@@ -1,0 +1,124 @@
+#!/usr/bin/env bash
+# Computes the factory metrics (docs/factory.md, "Metrics") of every measured
+# Intent from GitHub. Read-only: it uses plain `gh`, never scripts/bot-gh.
+# It gathers the data here; scripts/factory-metrics.jq computes the metrics.
+# Usage: scripts/factory-metrics [--since YYYY-MM-DD] [--json]
+set -euo pipefail
+
+scripts=$(dirname "$0")
+# shellcheck source=SCRIPTDIR/bot-identity.sh
+source "$scripts/bot-identity.sh"
+
+usage() {
+  echo "Usage: $0 [--since YYYY-MM-DD] [--json]" >&2
+  exit 2
+}
+
+json=false
+# Sorts before every date: without --since every Intent is kept.
+since=0000-00-00
+while (($#)); do
+  case $1 in
+    --json) json=true ;;
+    --since)
+      (($# >= 2)) || usage
+      # A real calendar date: it must survive a round trip through strptime.
+      if ! [[ $2 =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] ||
+        ! jq -en --arg d "$2" '$d | strptime("%Y-%m-%d") | mktime | strftime("%Y-%m-%d") == $d' \
+          >/dev/null 2>&1; then
+        usage
+      fi
+      since=$2
+      shift
+      ;;
+    *) usage ;;
+  esac
+  shift
+done
+
+# Runs a read-only gh command and prints its JSON; --paginate pages (several
+# arrays back to back) are merged into one array.
+gh_read() {
+  local out
+  if ! out=$(gh "$@"); then
+    echo "Error: 'gh $*' failed (see above). Is gh installed and authenticated for this repo?" >&2
+    return 1
+  fi
+  jq -s 'if length == 1 then .[0] else add // [] end' <<<"$out"
+}
+
+# The timeline of issue or PR #$1, every page of it.
+timeline() {
+  gh_read api --paginate "repos/{owner}/{repo}/issues/$1/timeline"
+}
+
+# Everything read from GitHub goes to files, never to arguments: timelines of
+# a long history would overflow the per-argument size limit.
+data=$(mktemp -d)
+trap 'rm -rf "$data"' EXIT
+
+# `gh … list` has no "all": a limit far beyond this repo's size stands for it.
+all=100000
+gh_read pr list --state merged --limit "$all" \
+  --json number,title,body,mergedAt,url,closingIssuesReferences >"$data/merged-prs.json"
+gh_read issue list --state all --label reversion --limit "$all" --json number,body \
+  >"$data/reversion-issues.json"
+
+# What GitHub's revert button generates: a `Revert "…"` PR whose body says
+# `Reverts owner/repo#N`. It is a Reversion of PR #N, never an Intent.
+is_revert='(.title | startswith("Revert \""))'
+jq "[.[] | select($is_revert)]" "$data/merged-prs.json" >"$data/reverts.json"
+# Only issues of this repo are Intents: a PR may also close one elsewhere.
+jq "[.[] | select($is_revert | not)"'
+  | (.url | sub("/pull/[0-9]+$"; "/issues/")) as $issues
+  | .closingIssuesReferences |= map(select(.url | startswith($issues)))]' \
+  "$data/merged-prs.json" >"$data/intent-prs.json"
+
+# The candidate Intents, each with the merged PRs that close it: the issues
+# closed by a merged PR, whose last merge is on or after --since.
+jq -c --arg since "$since" '
+  [.[] | {pr: .number, mergedAt} + (.closingIssuesReferences[] | {number})]
+  | group_by(.number)[]
+  | select(map(.mergedAt) | max | .[0:10] >= $since)
+  | {number: .[0].number, prs: map(.pr) | sort}' "$data/intent-prs.json" >"$data/candidates.jsonl"
+
+# The measured Intents are the top-level candidates: a large Intent is measured
+# at its Spec, so its Work items (GitHub sub-issues, with a parent) are skipped.
+: >"$data/issues.jsonl"
+while read -r candidate; do
+  n=$(jq '.number' <<<"$candidate")
+  gh_read issue view "$n" --json number,title,createdAt,parent >"$data/issue.json"
+  [[ $(jq '.parent' "$data/issue.json") == null ]] || continue
+  timeline "$n" >"$data/timeline.json"
+  jq -c --argjson candidate "$candidate" --slurpfile timeline "$data/timeline.json" \
+    '. + {prs: $candidate.prs, timeline: $timeline[0]}' "$data/issue.json" >>"$data/issues.jsonl"
+done <"$data/candidates.jsonl"
+
+# The timelines and review comments of the PRs that close a measured Intent.
+: >"$data/prs.jsonl"
+for n in $(jq -s 'map(.prs[]) | unique[]' "$data/issues.jsonl"); do
+  timeline "$n" >"$data/timeline.json"
+  gh_read api --paginate "repos/{owner}/{repo}/pulls/$n/comments" >"$data/review-comments.json"
+  jq -nc --argjson n "$n" --slurpfile timeline "$data/timeline.json" \
+    --slurpfile reviewComments "$data/review-comments.json" \
+    '{number: $n, timeline: $timeline[0], reviewComments: $reviewComments[0]}' >>"$data/prs.jsonl"
+done
+
+# The bot's GitHub login is its git name, BOT_NAME.
+metrics=$(jq -n -f "$scripts/factory-metrics.jq" --arg botLogin "$BOT_NAME" --arg botEmail "$BOT_EMAIL" \
+  --slurpfile prs "$data/intent-prs.json" --slurpfile reverts "$data/reverts.json" \
+  --slurpfile reversionIssues "$data/reversion-issues.json" \
+  --slurpfile issues "$data/issues.jsonl" --slurpfile prActivity "$data/prs.jsonl")
+
+if $json; then
+  echo "$metrics"
+  exit 0
+fi
+
+jq -r '
+  def format_hours: if . == null then "—" elif . == (. | floor) then "\(.).0" else tostring end;
+  def count: if . == null then "—" else tostring end;
+  "| Issue | Title | PRs | Lead time (h) | Unattended time (h) | Human touches | Reversions |",
+  "|---|---|---|---|---|---|---|",
+  (.[] | "| #\(.issue) | \(.title | gsub("\\|"; "\\|")) | \(.prs | map("#\(.)") | join(", ")) | \(.leadTimeHours | format_hours) | \(.unattendedTimeHours | format_hours) | \(.humanTouches | count) | \(.reversions) |")
+' <<<"$metrics"

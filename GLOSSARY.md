@@ -28,6 +28,10 @@ _Avoid_: ticket, task, sub-issue
 The moment the human accepts the Plan by applying `ready-for-agent`; from then on the work is delegable.
 _Avoid_: approval, sign-off
 
+**Human touch**:
+Any action of the human on an Intent after Alignment other than the final approval, such as a comment, a review, a change of approach asked of the agent or code of their own.
+_Avoid_: intervention, nudge, correction
+
 **Ambiguity**:
 A decision the Plan needs that is not settled by the glossary, the ADRs, the existing tests or the coding standards; the only thing that should require the human to align.
 _Avoid_: doubt, blocker
