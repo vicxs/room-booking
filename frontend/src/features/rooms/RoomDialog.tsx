@@ -199,7 +199,6 @@ function validate({ name, capacity }: RoomValues): RoomErrors {
  * after their field; any other failure, or one without field errors, is explained there too.
  */
 function errorsFrom(error: unknown): RoomErrors {
-  if (!(error instanceof Error)) return { general: "Something went wrong." };
   const problem = error instanceof ApiError ? error.problem : undefined;
   if (problem?.type === ROOM_NAME_TAKEN) return { name: problem.detail ?? problem.title };
 

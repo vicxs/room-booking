@@ -52,7 +52,7 @@ function Confirmation({
       onDeactivated();
     } catch (failure) {
       setDeactivating(false);
-      setError(failure instanceof Error ? explain(failure) : "Something went wrong.");
+      setError(explain(failure));
     }
   }
 

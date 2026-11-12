@@ -32,10 +32,14 @@ export function problemType(slug: string): string {
   return `urn:room-booking:problem:${slug}`;
 }
 
-/** A sentence for the user saying why a call failed: the server's own words, or a hint when it was not reached. */
-export function explain(error: Error): string {
+/**
+ * A sentence for the user saying why something failed: the server's own words, a hint when the server was not
+ * reached, or a plain admission when what was thrown is not even an error.
+ */
+export function explain(error: unknown): string {
   if (error instanceof ApiError && error.problem) return error.problem.detail ?? error.problem.title;
-  return "Check your connection and try again.";
+  if (error instanceof Error) return "Check your connection and try again.";
+  return "Something went wrong.";
 }
 
 async function readProblem(error: unknown): Promise<Problem | undefined> {
