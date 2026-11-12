@@ -1,4 +1,4 @@
-import { CircleAlert, DoorOpen, LoaderCircle, Plus, RotateCw } from "lucide-react";
+import { CircleAlert, DoorOpen, LoaderCircle, Pencil, Plus, RotateCw } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { type Room, RoomStatus } from "@/api/generated";
 import { explain } from "@/api/problem";
@@ -7,12 +7,16 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { RoomDialog } from "./RoomDialog";
-import { useCreateRoom, useRooms } from "./useRooms";
+import { useCreateRoom, useRooms, useUpdateRoom } from "./useRooms";
 
 export function RoomsPage() {
   const [creating, setCreating] = useState(false);
+  // The Room stays set while the dialog animates closed, so its content does not change as it fades out.
+  const [editing, setEditing] = useState<{ room: Room; open: boolean }>();
   const createRoom = useCreateRoom();
+  const updateRoom = useUpdateRoom();
   const startCreating = () => setCreating(true);
+  const startEditing = (room: Room) => setEditing({ room, open: true });
 
   return (
     <main className="mx-auto w-full max-w-4xl px-4 py-10 sm:px-6">
@@ -24,7 +28,7 @@ export function RoomsPage() {
         <NewRoomButton onClick={startCreating} />
       </header>
       <section className="rounded-lg border bg-card text-card-foreground shadow-sm">
-        <RoomsContent onCreate={startCreating} />
+        <RoomsContent onCreate={startCreating} onEdit={startEditing} />
       </section>
       <RoomDialog
         open={creating}
@@ -34,6 +38,17 @@ export function RoomsPage() {
         submitLabel="Create room"
         onSave={createRoom.mutateAsync}
       />
+      {editing && (
+        <RoomDialog
+          open={editing.open}
+          onOpenChange={(open) => setEditing({ ...editing, open })}
+          title="Edit room"
+          description="Change the room's name or capacity."
+          submitLabel="Save changes"
+          initialValues={editing.room}
+          onSave={(input) => updateRoom.mutateAsync({ id: editing.room.id, input })}
+        />
+      )}
     </main>
   );
 }
@@ -47,7 +62,7 @@ function NewRoomButton({ onClick }: { onClick: () => void }) {
   );
 }
 
-function RoomsContent({ onCreate }: { onCreate: () => void }) {
+function RoomsContent({ onCreate, onEdit }: { onCreate: () => void; onEdit: (room: Room) => void }) {
   const rooms = useRooms();
 
   if (rooms.isPending) {
@@ -94,42 +109,71 @@ function RoomsContent({ onCreate }: { onCreate: () => void }) {
     );
   }
 
-  return <RoomsTable rooms={rooms.data} />;
+  return <RoomsTable rooms={rooms.data} onEdit={onEdit} />;
 }
 
 function Message({ children }: { children: ReactNode }) {
   return <div className="flex min-h-48 items-center justify-center px-6 py-12">{children}</div>;
 }
 
-function RoomsTable({ rooms }: { rooms: Room[] }) {
+function RoomsTable({ rooms, onEdit }: { rooms: Room[]; onEdit: (room: Room) => void }) {
   return (
     <Table>
       <TableHeader>
         <TableRow className="hover:bg-transparent">
           <TableHead className="pl-4">Name</TableHead>
-          <TableHead className="w-px whitespace-nowrap pl-6 text-right">Capacity</TableHead>
-          <TableHead className="w-px whitespace-nowrap pl-6 pr-4">Status</TableHead>
+          <TableHead className="w-px whitespace-nowrap pl-3 text-right sm:pl-6">Capacity</TableHead>
+          <TableHead className="w-px whitespace-nowrap pl-3 sm:pl-6">Status</TableHead>
+          <TableHead className="w-px pl-1 pr-2 sm:pl-6">
+            <span className="sr-only">Actions</span>
+          </TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         {rooms.map((room) => (
-          <RoomRow key={room.id} room={room} />
+          <RoomRow key={room.id} room={room} onEdit={() => onEdit(room)} />
         ))}
       </TableBody>
     </Table>
   );
 }
 
-function RoomRow({ room }: { room: Room }) {
+function RoomRow({ room, onEdit }: { room: Room; onEdit: () => void }) {
   const deactivated = room.status === RoomStatus.Deactivated;
 
   return (
     <TableRow className={cn(deactivated && "text-muted-foreground")}>
-      <TableCell className="py-3 pl-4 font-medium">{room.name}</TableCell>
-      <TableCell className="py-3 pl-6 text-right tabular-nums">{room.capacity}</TableCell>
-      <TableCell className="py-3 pl-6 pr-4">
+      <TableCell className="py-3 pl-4 font-medium [overflow-wrap:anywhere]">{room.name}</TableCell>
+      <TableCell className="py-3 pl-3 text-right tabular-nums sm:pl-6">{room.capacity}</TableCell>
+      <TableCell className="py-3 pl-3 sm:pl-6">
         {deactivated ? <Badge variant="secondary">Deactivated</Badge> : <Badge variant="outline">Active</Badge>}
       </TableCell>
+      {/* The actions keep full contrast on a dimmed row: a deactivated Room can still be acted on. */}
+      <TableCell className="py-2 pl-1 pr-2 text-foreground sm:pl-6">
+        <div className="flex justify-end gap-1">
+          <RowAction label="Edit" room={room} icon={<Pencil aria-hidden />} onClick={onEdit} />
+        </div>
+      </TableCell>
     </TableRow>
+  );
+}
+
+/** A row's action, named after its Room for assistive technology; on phones it shows only its icon. */
+function RowAction({
+  label,
+  room,
+  icon,
+  onClick,
+}: {
+  label: string;
+  room: Room;
+  icon: ReactNode;
+  onClick: () => void;
+}) {
+  return (
+    <Button variant="ghost" size="sm" className="px-2 sm:px-3" aria-label={`${label} ${room.name}`} onClick={onClick}>
+      {icon}
+      <span className="sr-only sm:not-sr-only">{label}</span>
+    </Button>
   );
 }
