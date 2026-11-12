@@ -11,6 +11,7 @@ import com.roombooking.room.domain.Rooms;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Supplier;
 import org.jooq.DSLContext;
 import org.postgresql.util.PSQLException;
 import org.springframework.dao.DuplicateKeyException;
@@ -45,32 +46,26 @@ class JooqRooms implements Rooms {
 
     @Override
     public void add(Room room) {
-        try {
-            db.insertInto(ROOM)
-                    .set(ROOM.ID, room.id())
-                    .set(ROOM.NAME, room.name())
-                    .set(ROOM.CAPACITY, room.capacity())
-                    .set(ROOM.STATUS, room.status().name())
-                    .execute();
-        } catch (DuplicateKeyException exception) {
-            if (violates(exception, NAME_UNIQUE_IGNORING_CASE)) throw new RoomNameTakenException(room.name());
-            throw exception;
-        }
+        rejectingATakenName(
+                room,
+                () -> db.insertInto(ROOM)
+                        .set(ROOM.ID, room.id())
+                        .set(ROOM.NAME, room.name())
+                        .set(ROOM.CAPACITY, room.capacity())
+                        .set(ROOM.STATUS, room.status().name())
+                        .execute());
     }
 
     @Override
     public Room updateNameAndCapacity(Room room) {
-        try {
-            return db.update(ROOM)
-                    .set(ROOM.NAME, room.name())
-                    .set(ROOM.CAPACITY, room.capacity())
-                    .where(ROOM.ID.eq(room.id()))
-                    .returning()
-                    .fetchSingle(JooqRooms::toRoom);
-        } catch (DuplicateKeyException exception) {
-            if (violates(exception, NAME_UNIQUE_IGNORING_CASE)) throw new RoomNameTakenException(room.name());
-            throw exception;
-        }
+        return rejectingATakenName(
+                room,
+                () -> db.update(ROOM)
+                        .set(ROOM.NAME, room.name())
+                        .set(ROOM.CAPACITY, room.capacity())
+                        .where(ROOM.ID.eq(room.id()))
+                        .returning()
+                        .fetchSingle(JooqRooms::toRoom));
     }
 
     @Override
@@ -80,6 +75,19 @@ class JooqRooms implements Rooms {
                 .where(ROOM.ID.eq(id))
                 .returning()
                 .fetchOptional(JooqRooms::toRoom);
+    }
+
+    /**
+     * Runs a write of the Room's name, turning a violation of the unique index on the name, from a Room stored since
+     * the domain checked it, into the domain's taken-name error.
+     */
+    private static <T> T rejectingATakenName(Room room, Supplier<T> write) {
+        try {
+            return write.get();
+        } catch (DuplicateKeyException exception) {
+            if (violates(exception, NAME_UNIQUE_IGNORING_CASE)) throw new RoomNameTakenException(room.name());
+            throw exception;
+        }
     }
 
     private static boolean violates(DuplicateKeyException exception, String constraint) {
