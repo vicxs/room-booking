@@ -19,3 +19,13 @@ export function useCreateRoom() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: roomsQueryKey }),
   });
 }
+
+/** Replaces a Room's name and capacity. It settles once the list has been refetched, so the list shows the edit. */
+export function useUpdateRoom() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: RoomInput }) =>
+      callApi(() => roomsApi.updateRoom({ roomId: id, roomInput: input })),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: roomsQueryKey }),
+  });
+}

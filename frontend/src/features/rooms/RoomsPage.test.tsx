@@ -26,6 +26,12 @@ function requestBody(fetch: ReturnType<typeof serverReplies>, n: number): unknow
   return JSON.parse(String(init.body));
 }
 
+/** The method and URL of the nth request the page sent, counting from 0. */
+function request(fetch: ReturnType<typeof serverReplies>, n: number): { method: string | undefined; url: string } {
+  const [input, init] = fetch.mock.calls[n] as unknown as [RequestInfo, RequestInit];
+  return { method: init.method, url: String(input) };
+}
+
 function renderPage() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
@@ -78,10 +84,11 @@ test("lists the rooms in the order the server sends them", async () => {
     "Name",
     "Capacity",
     "Status",
+    "Actions",
   ]);
   expect(rowTexts()).toEqual([
-    ["Zeta", "2", "Active"],
-    ["alpha", "12", "Active"],
+    ["Zeta", "2", "Active", "Edit"],
+    ["alpha", "12", "Active", "Edit"],
   ]);
 });
 
@@ -283,6 +290,81 @@ describe("creating a room", () => {
     const reopened = screen.getByRole("dialog", { name: "New room" });
     expect(within(reopened).getByLabelText("Name")).toHaveValue("");
     expect(within(reopened).getByLabelText("Capacity")).toHaveValue(null);
+  });
+});
+
+describe("editing a room", () => {
+  const salaA = { id: "6f1c0a3e-1111-4c1a-9a40-000000000001", name: "Sala A", capacity: 4, status: "ACTIVE" };
+  const salaB = { id: "6f1c0a3e-1111-4c1a-9a40-000000000002", name: "Sala B", capacity: 6, status: "DEACTIVATED" };
+
+  test("opens the Room dialog with the room's current values", async () => {
+    serverReplies(json(200, [salaA, salaB]));
+    renderPage();
+
+    await userEvent.click(await screen.findByRole("button", { name: "Edit Sala B" }));
+
+    const dialog = screen.getByRole("dialog", { name: "Edit room" });
+    expect(within(dialog).getByLabelText("Name")).toHaveValue("Sala B");
+    expect(within(dialog).getByLabelText("Capacity")).toHaveValue(6);
+    expect(within(dialog).getByRole("button", { name: "Save changes" })).toBeEnabled();
+  });
+
+  test("saves the edit, closes the dialog and refetches the list", async () => {
+    const renamed = { ...salaB, name: "Sala Grande", capacity: 10 };
+    const fetch = serverReplies(json(200, [salaA, salaB]), json(200, renamed), json(200, [salaA, renamed]));
+    renderPage();
+    await userEvent.click(await screen.findByRole("button", { name: "Edit Sala B" }));
+    const dialog = screen.getByRole("dialog", { name: "Edit room" });
+
+    await userEvent.clear(within(dialog).getByLabelText("Name"));
+    await userEvent.type(within(dialog).getByLabelText("Name"), "Sala Grande");
+    await userEvent.clear(within(dialog).getByLabelText("Capacity"));
+    await userEvent.type(within(dialog).getByLabelText("Capacity"), "10");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save changes" }));
+
+    expect(await screen.findByRole("cell", { name: "Sala Grande" })).toBeVisible();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(fetch).toHaveBeenCalledTimes(3);
+    expect(request(fetch, 1)).toEqual({ method: "PUT", url: `/api/rooms/${salaB.id}` });
+    expect(requestBody(fetch, 1)).toEqual({ name: "Sala Grande", capacity: 10 });
+  });
+
+  test("shows a room that no longer exists as a general message, keeping the input", async () => {
+    serverReplies(
+      json(200, [salaA, salaB]),
+      json(
+        404,
+        { type: "about:blank", title: "Not Found", status: 404, detail: "The room does not exist." },
+        "application/problem+json",
+      ),
+    );
+    renderPage();
+    await userEvent.click(await screen.findByRole("button", { name: "Edit Sala B" }));
+    const dialog = screen.getByRole("dialog", { name: "Edit room" });
+
+    await userEvent.type(within(dialog).getByLabelText("Name"), " 2");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save changes" }));
+
+    const alert = await within(dialog).findByRole("alert");
+    expect(alert).toHaveTextContent("The room could not be saved");
+    expect(alert).toHaveTextContent("The room does not exist.");
+    expect(within(dialog).getByLabelText("Name")).toHaveValue("Sala B 2");
+    expect(within(dialog).getByLabelText("Name")).toBeValid();
+    expect(within(dialog).getByLabelText("Capacity")).toHaveValue(6);
+  });
+
+  test("starts from the values of the room being edited each time it opens", async () => {
+    serverReplies(json(200, [salaA, salaB]));
+    renderPage();
+    await userEvent.click(await screen.findByRole("button", { name: "Edit Sala A" }));
+    await userEvent.type(within(screen.getByRole("dialog")).getByLabelText("Name"), " changed");
+    await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Cancel" }));
+
+    await userEvent.click(screen.getByRole("button", { name: "Edit Sala B" }));
+
+    const dialog = screen.getByRole("dialog", { name: "Edit room" });
+    expect(within(dialog).getByLabelText("Name")).toHaveValue("Sala B");
+    expect(within(dialog).getByLabelText("Capacity")).toHaveValue(6);
   });
 });
 
