@@ -55,7 +55,7 @@ _Avoid_: rollback, regression, escape
 ## Booking
 
 **Room**:
-A bookable space with a capacity and Equipment; it is either active or deactivated, and a deactivated Room accepts no new Bookings.
+A bookable space, identified by a name unique among all Rooms, with a capacity and Equipment; it is either active or deactivated, a deactivated Room accepts no new Bookings and can be reactivated, and a Room is never deleted.
 _Avoid_: space, resource
 
 **Equipment**:
