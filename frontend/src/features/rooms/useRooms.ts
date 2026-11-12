@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { roomsApi } from "@/api/client";
-import type { RoomInput } from "@/api/generated";
+import type { Room, RoomInput } from "@/api/generated";
 import { callApi } from "@/api/problem";
 
 /** The key of the Rooms list; mutations invalidate it when they succeed. */
@@ -26,6 +26,24 @@ export function useUpdateRoom() {
   return useMutation({
     mutationFn: ({ id, input }: { id: string; input: RoomInput }) =>
       callApi(() => roomsApi.updateRoom({ roomId: id, roomInput: input })),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: roomsQueryKey }),
+  });
+}
+
+/** Takes a Room out of service. It settles once the list has been refetched, so the list shows it deactivated. */
+export function useDeactivateRoom() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (room: Room) => callApi(() => roomsApi.deactivateRoom({ roomId: room.id })),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: roomsQueryKey }),
+  });
+}
+
+/** Brings a Room back into service. It settles once the list has been refetched, so the list shows it active. */
+export function useReactivateRoom() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (room: Room) => callApi(() => roomsApi.reactivateRoom({ roomId: room.id })),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: roomsQueryKey }),
   });
 }

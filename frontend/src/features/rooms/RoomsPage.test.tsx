@@ -74,7 +74,7 @@ test("lists the rooms in the order the server sends them", async () => {
   serverReplies(
     json(200, [
       { id: "6f1c0a3e-1111-4c1a-9a40-000000000001", name: "Zeta", capacity: 2, status: "ACTIVE" },
-      { id: "6f1c0a3e-1111-4c1a-9a40-000000000002", name: "alpha", capacity: 12, status: "ACTIVE" },
+      { id: "6f1c0a3e-1111-4c1a-9a40-000000000002", name: "alpha", capacity: 12, status: "DEACTIVATED" },
     ]),
   );
   renderPage();
@@ -87,8 +87,8 @@ test("lists the rooms in the order the server sends them", async () => {
     "Actions",
   ]);
   expect(rowTexts()).toEqual([
-    ["Zeta", "2", "Active", "Edit"],
-    ["alpha", "12", "Active", "Edit"],
+    ["Zeta", "2", "Active", "Edit", "Deactivate"],
+    ["alpha", "12", "Deactivated", "Edit", "Reactivate"],
   ]);
 });
 
@@ -365,6 +365,92 @@ describe("editing a room", () => {
     const dialog = screen.getByRole("dialog", { name: "Edit room" });
     expect(within(dialog).getByLabelText("Name")).toHaveValue("Sala B");
     expect(within(dialog).getByLabelText("Capacity")).toHaveValue(6);
+  });
+});
+
+describe("deactivating and reactivating a room", () => {
+  const salaA = { id: "6f1c0a3e-1111-4c1a-9a40-000000000001", name: "Sala A", capacity: 4, status: "ACTIVE" };
+  const salaB = { id: "6f1c0a3e-1111-4c1a-9a40-000000000002", name: "Sala B", capacity: 6, status: "DEACTIVATED" };
+
+  test("asks to confirm naming the room, then deactivates it and refetches the list", async () => {
+    const deactivated = { ...salaA, status: "DEACTIVATED" };
+    const fetch = serverReplies(json(200, [salaA, salaB]), json(200, deactivated), json(200, [deactivated, salaB]));
+    renderPage();
+
+    await userEvent.click(await screen.findByRole("button", { name: "Deactivate Sala A" }));
+
+    const confirmation = screen.getByRole("alertdialog", { name: "Deactivate Sala A?" });
+    expect(fetch).toHaveBeenCalledTimes(1);
+
+    await userEvent.click(within(confirmation).getByRole("button", { name: "Deactivate" }));
+
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+    expect(screen.getByRole("cell", { name: "Sala A" }).closest("tr")).toHaveTextContent("Deactivated");
+    expect(fetch).toHaveBeenCalledTimes(3);
+    expect(request(fetch, 1)).toEqual({ method: "POST", url: `/api/rooms/${salaA.id}/deactivation` });
+    expect(request(fetch, 2)).toEqual({ method: "GET", url: "/api/rooms" });
+  });
+
+  test("does nothing when the confirmation is cancelled", async () => {
+    const fetch = serverReplies(json(200, [salaA, salaB]));
+    renderPage();
+
+    await userEvent.click(await screen.findByRole("button", { name: "Deactivate Sala A" }));
+    await userEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Cancel" }));
+
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+    expect(screen.getByRole("cell", { name: "Sala A" }).closest("tr")).toHaveTextContent("Active");
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  test("reactivates a deactivated room without asking, and refetches the list", async () => {
+    const reactivated = { ...salaB, status: "ACTIVE" };
+    const fetch = serverReplies(json(200, [salaA, salaB]), json(200, reactivated), json(200, [salaA, reactivated]));
+    renderPage();
+
+    await userEvent.click(await screen.findByRole("button", { name: "Reactivate Sala B" }));
+
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("cell", { name: "Sala B" }).closest("tr")).toHaveTextContent("Active"));
+    expect(fetch).toHaveBeenCalledTimes(3);
+    expect(request(fetch, 1)).toEqual({ method: "POST", url: `/api/rooms/${salaB.id}/reactivation` });
+    expect(request(fetch, 2)).toEqual({ method: "GET", url: "/api/rooms" });
+  });
+
+  const notFound = json(
+    404,
+    { type: "about:blank", title: "Not Found", status: 404, detail: "The room does not exist." },
+    "application/problem+json",
+  );
+
+  test("keeps the confirmation open with the server's explanation when the deactivation fails", async () => {
+    serverReplies(json(200, [salaA, salaB]), notFound);
+    renderPage();
+    await userEvent.click(await screen.findByRole("button", { name: "Deactivate Sala A" }));
+    const confirmation = screen.getByRole("alertdialog", { name: "Deactivate Sala A?" });
+
+    await userEvent.click(within(confirmation).getByRole("button", { name: "Deactivate" }));
+
+    const alert = await within(confirmation).findByRole("alert");
+    expect(alert).toHaveTextContent("The room could not be deactivated");
+    expect(alert).toHaveTextContent("The room does not exist.");
+    expect(within(confirmation).getByRole("button", { name: "Deactivate" })).toBeEnabled();
+  });
+
+  test("says which room could not be reactivated, and why", async () => {
+    serverReplies(json(200, [salaA, salaB]), notFound);
+    renderPage();
+
+    await userEvent.click(await screen.findByRole("button", { name: "Reactivate Sala B" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("Sala B could not be reactivated");
+    expect(alert).toHaveTextContent("The room does not exist.");
+    expect(screen.getByRole("button", { name: "Reactivate Sala B" })).toBeEnabled();
+
+    await userEvent.click(within(alert).getByRole("button", { name: "Dismiss" }));
+
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });
 
