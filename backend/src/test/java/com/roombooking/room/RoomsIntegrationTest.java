@@ -185,13 +185,29 @@ class RoomsIntegrationTest {
 
     @Test
     void rejectsAMalformedOrMistypedBody() {
-        for (ResponseEntity<JsonNode> response : List.of(
-                send(HttpMethod.POST, "/api/rooms", "{\"name\": \"Sala A\","),
-                send(HttpMethod.POST, "/api/rooms", "{\"name\": \"Sala A\", \"capacity\": \"four\"}"),
-                send(HttpMethod.PUT, "/api/rooms/" + UUID.randomUUID(), "[]"))) {
-            JsonNode problem = assertProblem(response, HttpStatus.BAD_REQUEST);
-            assertThat(problem.has("errors")).isFalse();
+        UUID id = createRoom("Sala A", 4);
+
+        // A value of another JSON type is rejected, never converted: 1.5 is not taken as 1, nor 42 as "42".
+        for (String body : List.of(
+                "{\"name\": \"Sala B\",",
+                "[]",
+                "{\"name\": \"Sala B\", \"capacity\": \"four\"}",
+                "{\"name\": \"Sala B\", \"capacity\": 1.5}",
+                "{\"name\": \"Sala B\", \"capacity\": 4.0}",
+                "{\"name\": \"Sala B\", \"capacity\": \"4\"}",
+                "{\"name\": \"Sala B\", \"capacity\": \"\"}",
+                "{\"name\": \"Sala B\", \"capacity\": true}",
+                "{\"name\": 42, \"capacity\": 4}",
+                "{\"name\": 4.2, \"capacity\": 4}",
+                "{\"name\": true, \"capacity\": 4}")) {
+            for (ResponseEntity<JsonNode> response : List.of(
+                    send(HttpMethod.POST, "/api/rooms", body), send(HttpMethod.PUT, "/api/rooms/" + id, body))) {
+                JsonNode problem = assertProblem(response, HttpStatus.BAD_REQUEST);
+                assertThat(problem.has("errors")).as(body).isFalse();
+            }
         }
+        assertThat(http.getForEntity("/api/rooms", Room[].class).getBody())
+                .containsExactly(new Room(id, "Sala A", 4, RoomStatus.ACTIVE));
     }
 
     @Test
