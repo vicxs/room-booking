@@ -17,4 +17,17 @@ public final class RoomCatalogue {
     public List<Room> list() {
         return rooms.allSortedByName();
     }
+
+    /**
+     * Creates an active Room, with its name trimmed at both ends.
+     *
+     * @throws InvalidRoomException if the name is blank once trimmed.
+     * @throws RoomNameTakenException if another Room has the name, ignoring case.
+     */
+    public Room create(String name, int capacity) {
+        Room room = Room.create(name, capacity);
+        if (rooms.nameTakenByAnotherRoom(room)) throw new RoomNameTakenException(room.name());
+        rooms.add(room);
+        return room;
+    }
 }
