@@ -11,6 +11,7 @@ import com.roombooking.problem.web.Problems;
 import com.roombooking.room.domain.InvalidRoomException;
 import com.roombooking.room.domain.RoomCatalogue;
 import com.roombooking.room.domain.RoomNameTakenException;
+import com.roombooking.room.domain.RoomNotFoundException;
 import java.net.URI;
 import java.util.List;
 import java.util.UUID;
@@ -47,7 +48,7 @@ class RoomController implements RoomsApi {
 
     @Override
     public ResponseEntity<Room> updateRoom(UUID roomId, RoomInput roomInput) {
-        throw notImplementedYet();
+        return ResponseEntity.ok(toContract(catalogue.update(roomId, roomInput.getName(), roomInput.getCapacity())));
     }
 
     @Override
@@ -72,6 +73,12 @@ class RoomController implements RoomsApi {
         problem.setType(ROOM_NAME_TAKEN);
         problem.setTitle("Room name taken");
         return Problems.respond(problem);
+    }
+
+    /** An {@code about:blank} 404 (the Contract's {@code NotFound}), worded for people; the URL holds the id. */
+    @ExceptionHandler
+    ResponseEntity<ProblemDetail> handleRoomNotFound(RoomNotFoundException exception) {
+        return Problems.respond(ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, "The room does not exist."));
     }
 
     private static Room toContract(com.roombooking.room.domain.Room room) {

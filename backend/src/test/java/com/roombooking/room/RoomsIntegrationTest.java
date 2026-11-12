@@ -108,7 +108,6 @@ class RoomsIntegrationTest {
     void answersTheOperationsNotImplementedYetWithA501Problem() {
         String room = "/api/rooms/" + UUID.randomUUID();
 
-        assertProblem(send(HttpMethod.PUT, room, VALID_ROOM), HttpStatus.NOT_IMPLEMENTED);
         assertProblem(send(HttpMethod.POST, room + "/deactivation", null), HttpStatus.NOT_IMPLEMENTED);
         assertProblem(send(HttpMethod.POST, room + "/reactivation", null), HttpStatus.NOT_IMPLEMENTED);
     }
@@ -187,6 +186,98 @@ class RoomsIntegrationTest {
                 .containsExactly("Sala A");
     }
 
+    @Test
+    void replacesTheNameAndCapacityOfARoomAndAnswersItAsItNowIs() {
+        UUID id = createRoom("Sala A", 4);
+
+        ResponseEntity<Room> response = update(id, new RoomInput("  Sala   Grande ", 10));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Room updated = new Room(id, "Sala   Grande", 10, RoomStatus.ACTIVE);
+        assertThat(response.getBody()).isEqualTo(updated);
+        assertThat(http.getForEntity("/api/rooms", Room[].class).getBody()).containsExactly(updated);
+    }
+
+    @Test
+    void acceptsARenameThatOnlyChangesTheCase() {
+        UUID id = createRoom("sala a", 4);
+
+        ResponseEntity<Room> response = update(id, new RoomInput("Sala A", 4));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).isEqualTo(new Room(id, "Sala A", 4, RoomStatus.ACTIVE));
+    }
+
+    @Test
+    void acceptsTheSameRoomAgainWithoutChangingIt() {
+        UUID id = createRoom("Sala A", 4);
+        Room unchanged = new Room(id, "Sala A", 4, RoomStatus.ACTIVE);
+
+        assertThat(update(id, new RoomInput("Sala A", 4)).getBody()).isEqualTo(unchanged);
+        assertThat(update(id, new RoomInput("Sala A", 4)).getBody()).isEqualTo(unchanged);
+        assertThat(http.getForEntity("/api/rooms", Room[].class).getBody()).containsExactly(unchanged);
+    }
+
+    @Test
+    void editsADeactivatedRoomAndKeepsItDeactivated() {
+        UUID id = createDeactivatedRoom("Sala A", 4);
+
+        ResponseEntity<Room> response = update(id, new RoomInput("Sala B", 6));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).isEqualTo(new Room(id, "Sala B", 6, RoomStatus.DEACTIVATED));
+    }
+
+    @Test
+    void rejectsARenameToANameAnotherRoomHasIgnoringCase() {
+        createRoom("Sala A", 4);
+        UUID id = createRoom("Sala B", 6);
+
+        ResponseEntity<JsonNode> response =
+                send(HttpMethod.PUT, "/api/rooms/" + id, "{\"name\": \"SALA A\", \"capacity\": 6}");
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(response.getHeaders().getContentType()).isEqualTo(MediaType.APPLICATION_PROBLEM_JSON);
+        JsonNode problem = response.getBody();
+        assertThat(problem).isNotNull();
+        assertThat(problem.path("type").asText()).isEqualTo("urn:room-booking:problem:room-name-taken");
+        assertThat(problem.path("detail").asText()).isEqualTo("The name \"SALA A\" is already taken.");
+        assertThat(http.getForEntity("/api/rooms", Room[].class).getBody())
+                .extracting(Room::getName)
+                .containsExactly("Sala A", "Sala B");
+    }
+
+    @Test
+    void rejectsAnInvalidEditAsOnCreate() {
+        UUID id = createRoom("Sala A", 4);
+        String room = "/api/rooms/" + id;
+
+        JsonNode blankName = assertProblem(
+                send(HttpMethod.PUT, room, "{\"name\": \"  \", \"capacity\": 4}"), HttpStatus.BAD_REQUEST);
+        JsonNode tooLongNameAndTooSmallCapacity = assertProblem(
+                send(HttpMethod.PUT, room, "{\"name\": \"" + "x".repeat(101) + "\", \"capacity\": 0}"),
+                HttpStatus.BAD_REQUEST);
+
+        assertThat(blankName.path("errors")).containsExactly(fieldError("name", "must not be blank"));
+        assertThat(tooLongNameAndTooSmallCapacity.path("errors"))
+                .containsExactly(
+                        fieldError("capacity", "must be greater than or equal to 1"),
+                        fieldError("name", "size must be between 1 and 100"));
+        assertThat(http.getForEntity("/api/rooms", Room[].class).getBody())
+                .containsExactly(new Room(id, "Sala A", 4, RoomStatus.ACTIVE));
+    }
+
+    @Test
+    void answersAnUnknownRoomIdWithA404Problem() {
+        UUID unknown = UUID.randomUUID();
+
+        JsonNode problem =
+                assertProblem(send(HttpMethod.PUT, "/api/rooms/" + unknown, VALID_ROOM), HttpStatus.NOT_FOUND);
+
+        assertThat(problem.path("detail").asText()).isEqualTo("The room does not exist.");
+        assertThat(http.getForEntity("/api/rooms", Room[].class).getBody()).isEmpty();
+    }
+
     private UUID createRoom(String name, int capacity) {
         ResponseEntity<Room> response = http.postForEntity("/api/rooms", new RoomInput(name, capacity), Room.class);
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
@@ -200,6 +291,10 @@ class RoomsIntegrationTest {
                 .param(id)
                 .update();
         return id;
+    }
+
+    private ResponseEntity<Room> update(UUID id, RoomInput input) {
+        return http.exchange("/api/rooms/" + id, HttpMethod.PUT, new HttpEntity<>(input), Room.class);
     }
 
     /** Sends a JSON request accepting only JSON, as the generated TypeScript client does. */
