@@ -5,7 +5,6 @@ import java.util.List;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
-import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.lang.Nullable;
@@ -44,16 +43,10 @@ class ProblemDetailsAdvice extends ResponseEntityExceptionHandler {
         return handleExceptionInternal(exception, problem, new HttpHeaders(), status, request);
     }
 
-    /**
-     * Spring picks {@code application/problem+json} only when the client does not accept {@code application/json}.
-     * Setting it here makes every error use it.
-     */
+    /** Every error this advice answers goes out as {@code application/problem+json}, as {@link Problems} does. */
     @Override
     protected ResponseEntity<Object> createResponseEntity(
             @Nullable Object body, HttpHeaders headers, HttpStatusCode statusCode, WebRequest request) {
-        HttpHeaders problemHeaders = new HttpHeaders();
-        problemHeaders.putAll(headers);
-        problemHeaders.setContentType(MediaType.APPLICATION_PROBLEM_JSON);
-        return super.createResponseEntity(body, problemHeaders, statusCode, request);
+        return super.createResponseEntity(body, Problems.asProblem(headers), statusCode, request);
     }
 }
