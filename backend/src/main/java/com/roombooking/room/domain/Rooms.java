@@ -30,4 +30,11 @@ public interface Rooms {
      * @throws RoomNameTakenException if another Room stored the same name, ignoring case, since it was checked.
      */
     Room updateNameAndCapacity(Room room);
+
+    /**
+     * Stores the status of an existing Room, by id, leaving its stored name and capacity as they are.
+     *
+     * @return the Room as stored now, or nothing if no Room has the id.
+     */
+    Optional<Room> updateStatus(UUID id, RoomStatus status);
 }

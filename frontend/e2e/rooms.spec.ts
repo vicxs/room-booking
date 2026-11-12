@@ -53,7 +53,7 @@ test("an Administrator creates a room and sees it in the table", async ({ page }
   const dialog = await createRoom(page, name, "6");
 
   await expect(dialog).toBeHidden();
-  await expect(roomRow(page, name).getByRole("cell")).toHaveText([name, "6", "Active", "Edit"]);
+  await expect(roomRow(page, name).getByRole("cell")).toHaveText([name, "6", "Active", "Edit", "Deactivate"]);
   expect(consoleProblems).toEqual([]);
 });
 
@@ -73,8 +73,32 @@ test("an Administrator edits a room and sees the new values in the table", async
   await dialog.getByRole("button", { name: "Save changes" }).click();
 
   await expect(dialog).toBeHidden();
-  await expect(roomRow(page, newName).getByRole("cell")).toHaveText([newName, "12", "Active", "Edit"]);
+  await expect(roomRow(page, newName).getByRole("cell")).toHaveText([newName, "12", "Active", "Edit", "Deactivate"]);
   await expect(roomRow(page, name)).toHaveCount(0);
+  expect(consoleProblems).toEqual([]);
+});
+
+test("an Administrator deactivates a room after confirming, then reactivates it", async ({ page }) => {
+  const consoleProblems = collectConsoleProblems(page);
+  const name = uniqueRoomName();
+  await page.goto("/rooms");
+  await expect(await createRoom(page, name, "8")).toBeHidden();
+  const row = roomRow(page, name);
+  const nameCell = row.getByRole("cell", { name, exact: true });
+  const activeColor = await nameCell.evaluate((cell) => getComputedStyle(cell).color);
+
+  await page.getByRole("button", { name: `Deactivate ${name}` }).click();
+  const confirmation = page.getByRole("alertdialog", { name: `Deactivate ${name}?` });
+  await confirmation.getByRole("button", { name: "Deactivate" }).click();
+
+  await expect(confirmation).toBeHidden();
+  await expect(row.getByRole("cell")).toHaveText([name, "8", "Deactivated", "Edit", "Reactivate"]);
+  await expect(nameCell).not.toHaveCSS("color", activeColor);
+
+  await page.getByRole("button", { name: `Reactivate ${name}` }).click();
+
+  await expect(row.getByRole("cell")).toHaveText([name, "8", "Active", "Edit", "Deactivate"]);
+  await expect(nameCell).toHaveCSS("color", activeColor);
   expect(consoleProblems).toEqual([]);
 });
 

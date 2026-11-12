@@ -1,4 +1,4 @@
-import { CircleAlert, LoaderCircle } from "lucide-react";
+import { LoaderCircle } from "lucide-react";
 import { type ComponentProps, type FormEvent, forwardRef, useId, useRef, useState } from "react";
 import type { RoomInput } from "@/api/generated";
 import { ApiError, explain } from "@/api/problem";
@@ -15,6 +15,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
+import { FailureAlert } from "./FailureAlert";
 
 const NAME_MAX_LENGTH = 100;
 const ROOM_NAME_TAKEN = "urn:room-booking:problem:room-name-taken";
@@ -97,18 +98,7 @@ function RoomForm({ title, description, submitLabel, initialValues, onSave, onSa
         <DialogTitle>{title}</DialogTitle>
         <DialogDescription>{description}</DialogDescription>
       </DialogHeader>
-      {errors.general && (
-        <div
-          role="alert"
-          className="flex gap-2 rounded-md border border-destructive/50 px-3 py-2.5 text-sm text-destructive"
-        >
-          <CircleAlert aria-hidden className="mt-0.5 size-4 shrink-0" />
-          <div className="space-y-0.5">
-            <p className="font-medium">The room could not be saved</p>
-            <p>{errors.general}</p>
-          </div>
-        </div>
-      )}
+      {errors.general && <FailureAlert title="The room could not be saved" reason={errors.general} />}
       <div className="grid gap-4">
         <TextField
           ref={inputs.name}

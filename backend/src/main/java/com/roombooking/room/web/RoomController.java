@@ -20,7 +20,6 @@ import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 @RestController
@@ -53,12 +52,12 @@ class RoomController implements RoomsApi {
 
     @Override
     public ResponseEntity<Room> deactivateRoom(UUID roomId) {
-        throw notImplementedYet();
+        return ResponseEntity.ok(toContract(catalogue.deactivate(roomId)));
     }
 
     @Override
     public ResponseEntity<Room> reactivateRoom(UUID roomId) {
-        throw notImplementedYet();
+        return ResponseEntity.ok(toContract(catalogue.reactivate(roomId)));
     }
 
     /** A Room rule the request breaks, answered in the same shape as a Bean Validation failure. */
@@ -96,10 +95,5 @@ class RoomController implements RoomsApi {
                 .buildAndExpand(room.id())
                 .getPath();
         return URI.create(requireNonNull(path));
-    }
-
-    /** Answers the Contract operations whose Work item has not landed yet (#18). */
-    private static ResponseStatusException notImplementedYet() {
-        return new ResponseStatusException(HttpStatus.NOT_IMPLEMENTED, "This operation is not implemented yet.");
     }
 }
