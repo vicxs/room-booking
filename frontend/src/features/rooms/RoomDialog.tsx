@@ -184,6 +184,7 @@ const TextField = forwardRef<HTMLInputElement, TextFieldProps>(function TextFiel
 /** Mirrors the server's rules (see RoomInput in the Contract), as early feedback. */
 function validate({ name, capacity }: RoomValues): RoomErrors {
   const errors: RoomErrors = {};
+  // `trim()` strips the same whitespace the server trims, no-break spaces included (see Room in the backend).
   if (name.trim() === "") errors.name = "Enter a name.";
   else if (name.length > NAME_MAX_LENGTH) errors.name = `Use at most ${NAME_MAX_LENGTH} characters.`;
   if (capacity.trim() === "") errors.capacity = "Enter a capacity.";

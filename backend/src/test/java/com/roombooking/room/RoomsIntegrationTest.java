@@ -94,13 +94,24 @@ class RoomsIntegrationTest {
                 .containsExactly("Sala   B");
     }
 
+    /** Whitespace is what JavaScript's {@code trim()} strips, so the client and the server agree on it. */
+    @Test
+    void trimsUnicodeWhitespaceSuchAsNoBreakSpacesAsTheClientDoes() {
+        Room created = http.postForObject(
+                "/api/rooms", new RoomInput("\u00a0\u3000\ufeffSala\u00a0B\u2003\n\u2028", 4), Room.class);
+
+        assertThat(created.getName()).isEqualTo("Sala\u00a0B");
+    }
+
     @Test
     void rejectsANameThatIsBlankOnceTrimmedAsAValidationError() {
-        ResponseEntity<JsonNode> response =
-                send(HttpMethod.POST, "/api/rooms", "{\"name\": \" \\t \", \"capacity\": 4}");
+        for (String blank : List.of(" \\t ", "\\u00a0\\u2007\\u202f\\ufeff\\u3000")) {
+            ResponseEntity<JsonNode> response =
+                    send(HttpMethod.POST, "/api/rooms", "{\"name\": \"" + blank + "\", \"capacity\": 4}");
 
-        JsonNode problem = assertProblem(response, HttpStatus.BAD_REQUEST);
-        assertThat(problem.path("errors")).containsExactly(fieldError("name", "must not be blank"));
+            JsonNode problem = assertProblem(response, HttpStatus.BAD_REQUEST);
+            assertThat(problem.path("errors")).as(blank).containsExactly(fieldError("name", "must not be blank"));
+        }
         assertThat(http.getForEntity("/api/rooms", Room[].class).getBody()).isEmpty();
     }
 
