@@ -105,11 +105,71 @@ class RoomsIntegrationTest {
     }
 
     @Test
-    void answersTheOperationsNotImplementedYetWithA501Problem() {
-        String room = "/api/rooms/" + UUID.randomUUID();
+    void deactivatesAnActiveRoomAndAnswersIt() {
+        UUID id = createRoom("Sala A", 4);
+        Room deactivated = new Room(id, "Sala A", 4, RoomStatus.DEACTIVATED);
 
-        assertProblem(send(HttpMethod.POST, room + "/deactivation", null), HttpStatus.NOT_IMPLEMENTED);
-        assertProblem(send(HttpMethod.POST, room + "/reactivation", null), HttpStatus.NOT_IMPLEMENTED);
+        ResponseEntity<Room> response = deactivate(id);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).isEqualTo(deactivated);
+        assertThat(http.getForEntity("/api/rooms", Room[].class).getBody()).containsExactly(deactivated);
+    }
+
+    @Test
+    void deactivatesADeactivatedRoomAgainWithoutChangingIt() {
+        UUID id = createDeactivatedRoom("Sala A", 4);
+        Room deactivated = new Room(id, "Sala A", 4, RoomStatus.DEACTIVATED);
+
+        ResponseEntity<Room> response = deactivate(id);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).isEqualTo(deactivated);
+        assertThat(http.getForEntity("/api/rooms", Room[].class).getBody()).containsExactly(deactivated);
+    }
+
+    @Test
+    void reactivatesADeactivatedRoomAndAnswersIt() {
+        UUID id = createDeactivatedRoom("Sala A", 4);
+        Room active = new Room(id, "Sala A", 4, RoomStatus.ACTIVE);
+
+        ResponseEntity<Room> response = reactivate(id);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).isEqualTo(active);
+        assertThat(http.getForEntity("/api/rooms", Room[].class).getBody()).containsExactly(active);
+    }
+
+    @Test
+    void reactivatesAnActiveRoomAgainWithoutChangingIt() {
+        UUID id = createRoom("Sala A", 4);
+        Room active = new Room(id, "Sala A", 4, RoomStatus.ACTIVE);
+
+        ResponseEntity<Room> response = reactivate(id);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).isEqualTo(active);
+        assertThat(http.getForEntity("/api/rooms", Room[].class).getBody()).containsExactly(active);
+    }
+
+    @Test
+    void keepsTheNameOfADeactivatedRoomTaken() {
+        createDeactivatedRoom("Sala A", 4);
+        UUID other = createRoom("Sala B", 6);
+
+        ResponseEntity<JsonNode> create =
+                send(HttpMethod.POST, "/api/rooms", "{\"name\": \"sala a\", \"capacity\": 8}");
+        ResponseEntity<JsonNode> rename =
+                send(HttpMethod.PUT, "/api/rooms/" + other, "{\"name\": \"SALA A\", \"capacity\": 6}");
+
+        for (ResponseEntity<JsonNode> response : List.of(create, rename)) {
+            assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+            assertThat(requireNonNull(response.getBody()).path("type").asText())
+                    .isEqualTo("urn:room-booking:problem:room-name-taken");
+        }
+        assertThat(http.getForEntity("/api/rooms", Room[].class).getBody())
+                .extracting(Room::getName)
+                .containsExactly("Sala A", "Sala B");
     }
 
     @Test
@@ -269,12 +329,15 @@ class RoomsIntegrationTest {
 
     @Test
     void answersAnUnknownRoomIdWithA404Problem() {
-        UUID unknown = UUID.randomUUID();
+        String unknown = "/api/rooms/" + UUID.randomUUID();
 
-        JsonNode problem =
-                assertProblem(send(HttpMethod.PUT, "/api/rooms/" + unknown, VALID_ROOM), HttpStatus.NOT_FOUND);
-
-        assertThat(problem.path("detail").asText()).isEqualTo("The room does not exist.");
+        for (ResponseEntity<JsonNode> response : List.of(
+                send(HttpMethod.PUT, unknown, VALID_ROOM),
+                send(HttpMethod.POST, unknown + "/deactivation", null),
+                send(HttpMethod.POST, unknown + "/reactivation", null))) {
+            JsonNode problem = assertProblem(response, HttpStatus.NOT_FOUND);
+            assertThat(problem.path("detail").asText()).isEqualTo("The room does not exist.");
+        }
         assertThat(http.getForEntity("/api/rooms", Room[].class).getBody()).isEmpty();
     }
 
@@ -284,13 +347,18 @@ class RoomsIntegrationTest {
         return requireNonNull(response.getBody()).getId();
     }
 
-    /** Rooms cannot be deactivated over HTTP until {@code POST /rooms/{roomId}/deactivation} is implemented. */
     private UUID createDeactivatedRoom(String name, int capacity) {
         UUID id = createRoom(name, capacity);
-        jdbc.sql("update room set status = 'DEACTIVATED' where id = ?")
-                .param(id)
-                .update();
+        assertThat(deactivate(id).getStatusCode()).isEqualTo(HttpStatus.OK);
         return id;
+    }
+
+    private ResponseEntity<Room> deactivate(UUID id) {
+        return http.postForEntity("/api/rooms/" + id + "/deactivation", null, Room.class);
+    }
+
+    private ResponseEntity<Room> reactivate(UUID id) {
+        return http.postForEntity("/api/rooms/" + id + "/reactivation", null, Room.class);
     }
 
     private ResponseEntity<Room> update(UUID id, RoomInput input) {

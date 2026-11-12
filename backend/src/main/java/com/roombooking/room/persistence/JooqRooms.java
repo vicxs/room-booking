@@ -73,6 +73,15 @@ class JooqRooms implements Rooms {
         }
     }
 
+    @Override
+    public Optional<Room> updateStatus(UUID id, RoomStatus status) {
+        return db.update(ROOM)
+                .set(ROOM.STATUS, status.name())
+                .where(ROOM.ID.eq(id))
+                .returning()
+                .fetchOptional(JooqRooms::toRoom);
+    }
+
     private static boolean violates(DuplicateKeyException exception, String constraint) {
         return exception.getMostSpecificCause() instanceof PSQLException cause
                 && cause.getServerErrorMessage() != null
