@@ -163,7 +163,8 @@ describe("creating a room", () => {
     const fetch = serverReplies(json(200, []));
     const dialog = await openNewRoomDialog();
 
-    await userEvent.type(within(dialog).getByLabelText("Name"), "   ");
+    // Whitespace as the server trims it, no-break and ideographic spaces included.
+    await userEvent.type(within(dialog).getByLabelText("Name"), " \u00a0\u2007\u202f\u3000\ufeff");
     await userEvent.click(within(dialog).getByRole("button", { name: "Create room" }));
 
     expect(within(dialog).getByLabelText("Name")).toHaveAccessibleDescription("Enter a name.");
