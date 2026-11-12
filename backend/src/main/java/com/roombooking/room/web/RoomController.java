@@ -60,10 +60,12 @@ class RoomController implements RoomsApi {
         return ResponseEntity.ok(toContract(catalogue.reactivate(roomId)));
     }
 
-    /** A Room rule the request breaks, answered in the same shape as a Bean Validation failure. */
+    /** The Room rules the request breaks, answered in the same shape as a Bean Validation failure. */
     @ExceptionHandler
     ResponseEntity<ProblemDetail> handleInvalidRoom(InvalidRoomException exception) {
-        return Problems.invalid(List.of(new FieldError(exception.property(), exception.getMessage())));
+        return Problems.invalid(exception.violations().stream()
+                .map(violation -> new FieldError(violation.property(), violation.message()))
+                .toList());
     }
 
     @ExceptionHandler
