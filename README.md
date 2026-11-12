@@ -38,6 +38,7 @@ git ls-files -z -- scripts ':(exclude)*.jq' | xargs -0 shellcheck   # these run 
 scripts/tests/check-commit-authors.test.sh
 scripts/tests/sync-main.test.sh
 scripts/tests/factory-metrics.test.sh
+scripts/tests/staged-changes-affect-frontend.test.sh
 ```
 
 The Spring interfaces and the TypeScript client are generated from `openapi.yaml` on every build; never edit or commit them.

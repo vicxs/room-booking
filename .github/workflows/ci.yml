@@ -15,9 +15,9 @@ concurrency:
 
 jobs:
   # Every commit a PR adds must be authored by the factory bot (docs/factory.md,
-  # "Agent identity"). The job also runs the tests of the factory's shell
-  # scripts: the commit-author check and scripts/factory-metrics (docs/factory.md,
-  # "Metrics"). Skipped outside PRs; a skipped job counts as passing.
+  # "Agent identity"). The job also runs ShellCheck and the tests of the
+  # factory's shell scripts (scripts/tests/). Skipped outside PRs; a skipped job
+  # counts as passing.
   identity:
     name: identity
     if: github.event_name == 'pull_request'
@@ -41,6 +41,8 @@ jobs:
         run: scripts/tests/sync-main.test.sh
       - name: Test the factory metrics
         run: scripts/tests/factory-metrics.test.sh
+      - name: Test the pre-commit scoping rule
+        run: scripts/tests/staged-changes-affect-frontend.test.sh
       # The checkout is the PR's merge commit (refs/pull/N/merge): its first
       # parent is the current base branch and its second the PR head, so
       # HEAD^1..HEAD^2 is exactly the PR's commits. The event payload's
