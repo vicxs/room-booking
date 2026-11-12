@@ -23,9 +23,11 @@ while (($#)); do
     --since)
       (($# >= 2)) || usage
       # A real calendar date: it must survive a round trip through strptime.
-      [[ $2 =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] &&
-        jq -en --arg d "$2" '$d | strptime("%Y-%m-%d") | mktime | strftime("%Y-%m-%d") == $d' \
-          >/dev/null 2>&1 || usage
+      if ! [[ $2 =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] ||
+        ! jq -en --arg d "$2" '$d | strptime("%Y-%m-%d") | mktime | strftime("%Y-%m-%d") == $d' \
+          >/dev/null 2>&1; then
+        usage
+      fi
       since=$2
       shift
       ;;
