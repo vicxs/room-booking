@@ -22,7 +22,7 @@ public final class RoomCatalogue {
     /**
      * Creates an active Room, with its name trimmed at both ends.
      *
-     * @throws InvalidRoomException if the name is blank once trimmed.
+     * @throws InvalidRoomException if the name or the capacity breaks the Room's rules (see {@link Room}).
      * @throws RoomNameTakenException if another Room has the name, ignoring case.
      */
     public Room create(String name, int capacity) {
@@ -38,7 +38,7 @@ public final class RoomCatalogue {
      *
      * @return the Room as it now is.
      * @throws RoomNotFoundException if no Room has the id.
-     * @throws InvalidRoomException if the name is blank once trimmed.
+     * @throws InvalidRoomException if the name or the capacity breaks the Room's rules (see {@link Room}).
      * @throws RoomNameTakenException if another Room has the name, ignoring case.
      */
     public Room update(UUID id, String name, int capacity) {
