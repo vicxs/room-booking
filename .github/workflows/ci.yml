@@ -34,8 +34,9 @@ jobs:
         run: scripts/tests/check-commit-authors.test.sh
       # The other factory scripts are checked here too: this is the job that
       # owns scripts/, and the ruleset's required checks are a fixed list.
+      # Not every file under scripts/ is shell: jq programs are skipped.
       - name: ShellCheck the factory scripts
-        run: git ls-files -z scripts | xargs -0 shellcheck
+        run: git ls-files -z -- scripts ':(exclude)*.jq' | xargs -0 shellcheck
       - name: Test the SessionStart hook
         run: scripts/tests/sync-main.test.sh
       - name: Test the factory metrics
