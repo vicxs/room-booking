@@ -1,3 +1,21 @@
 pnpm exec lint-staged
-pnpm -C frontend typecheck
-pnpm -C frontend test
+
+# The frontend typecheck and unit tests run only when a staged change can
+# affect the frontend. scripts/staged-changes-affect-frontend exits 0 if it
+# can, 1 if it cannot, and >1 on error, which fails the commit. CI still runs
+# the frontend checks on every PR.
+status=0
+scripts/staged-changes-affect-frontend || status=$?
+
+case $status in
+0)
+  pnpm -C frontend typecheck
+  pnpm -C frontend test
+  ;;
+1)
+  echo "pre-commit: no staged frontend change, skipping frontend typecheck and tests"
+  ;;
+*)
+  exit "$status"
+  ;;
+esac
