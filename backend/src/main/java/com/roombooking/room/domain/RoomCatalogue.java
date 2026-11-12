@@ -48,4 +48,28 @@ public final class RoomCatalogue {
         if (rooms.nameTakenByAnotherRoom(room)) throw new RoomNameTakenException(room.name());
         return rooms.updateNameAndCapacity(room);
     }
+
+    /**
+     * Takes a Room out of service. Deactivating a deactivated Room changes nothing.
+     *
+     * @return the Room as it now is.
+     * @throws RoomNotFoundException if no Room has the id.
+     */
+    public Room deactivate(UUID id) {
+        return changeStatus(id, RoomStatus.DEACTIVATED);
+    }
+
+    /**
+     * Brings a deactivated Room back into service. Reactivating an active Room changes nothing.
+     *
+     * @return the Room as it now is.
+     * @throws RoomNotFoundException if no Room has the id.
+     */
+    public Room reactivate(UUID id) {
+        return changeStatus(id, RoomStatus.ACTIVE);
+    }
+
+    private Room changeStatus(UUID id, RoomStatus status) {
+        return rooms.updateStatus(id, status).orElseThrow(() -> new RoomNotFoundException(id));
+    }
 }
