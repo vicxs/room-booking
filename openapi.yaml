@@ -10,6 +10,8 @@ servers:
 tags:
   - name: health
     description: Liveness of the service and its database.
+  - name: rooms
+    description: The catalogue of Rooms that Administrators manage.
 paths:
   /health:
     get:
@@ -29,7 +31,141 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Health"
+  /rooms:
+    get:
+      tags: [rooms]
+      operationId: listRooms
+      summary: List every Room, active and deactivated, sorted by name ignoring case.
+      responses:
+        "200":
+          description: All Rooms, sorted by name ignoring case.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Room"
+    post:
+      tags: [rooms]
+      operationId: createRoom
+      summary: Create an active Room.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RoomInput"
+      responses:
+        "201":
+          description: The Room was created.
+          headers:
+            Location:
+              description: The URL of the new Room.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Room"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          $ref: "#/components/responses/RoomNameTaken"
+  /rooms/{roomId}:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+    put:
+      tags: [rooms]
+      operationId: updateRoom
+      summary: Replace the name and capacity of a Room, active or deactivated.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RoomInput"
+      responses:
+        "200":
+          description: The Room as it now is.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Room"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/RoomNameTaken"
+  /rooms/{roomId}/deactivation:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+    post:
+      tags: [rooms]
+      operationId: deactivateRoom
+      summary: Deactivate a Room so it accepts no new Bookings. Idempotent.
+      responses:
+        "200":
+          description: The Room, now deactivated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Room"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /rooms/{roomId}/reactivation:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+    post:
+      tags: [rooms]
+      operationId: reactivateRoom
+      summary: Reactivate a deactivated Room. Idempotent.
+      responses:
+        "200":
+          description: The Room, now active.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Room"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
 components:
+  parameters:
+    RoomId:
+      name: roomId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+  responses:
+    BadRequest:
+      description: >-
+        The request is malformed or invalid (`type: about:blank`). Validation
+        errors list each offending field in `errors`.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    NotFound:
+      description: >-
+        No Room has this id (`type: about:blank`).
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    RoomNameTaken:
+      description: >-
+        Another Room already has this name, ignoring case
+        (`type: urn:room-booking:problem:room-name-taken`).
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
   schemas:
     Health:
       type: object
@@ -38,3 +174,69 @@ components:
         status:
           type: string
           enum: [UP, DOWN]
+    RoomStatus:
+      type: string
+      enum: [ACTIVE, DEACTIVATED]
+    Room:
+      type: object
+      required: [id, name, capacity, status]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        capacity:
+          type: integer
+          format: int32
+          minimum: 1
+        status:
+          $ref: "#/components/schemas/RoomStatus"
+    RoomInput:
+      type: object
+      required: [name, capacity]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: >-
+            Trimmed at both ends by the server; it must not be blank once
+            trimmed. Unique among all Rooms, ignoring case.
+        capacity:
+          type: integer
+          format: int32
+          minimum: 1
+    Problem:
+      type: object
+      description: An error as Problem Details (RFC 9457, ADR-0003).
+      required: [type, title, status]
+      properties:
+        type:
+          type: string
+          format: uri-reference
+          default: about:blank
+        title:
+          type: string
+        status:
+          type: integer
+          format: int32
+        detail:
+          type: string
+        instance:
+          type: string
+          format: uri-reference
+        errors:
+          type: array
+          description: Present on validation errors, one item per offending field.
+          items:
+            $ref: "#/components/schemas/FieldError"
+    FieldError:
+      type: object
+      required: [field, message]
+      properties:
+        field:
+          type: string
+          description: The request body property the message is about, e.g. `name`.
+        message:
+          type: string
