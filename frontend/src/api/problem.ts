@@ -23,6 +23,15 @@ export async function callApi<T>(call: () => Promise<T>): Promise<T> {
   }
 }
 
+/**
+ * The `type` of a Problem for a business rule the client must tell apart, `urn:room-booking:problem:<slug>`
+ * (ADR-0003). The generated client has no constant for it: the Contract names each one only in the description of
+ * its response.
+ */
+export function problemType(slug: string): string {
+  return `urn:room-booking:problem:${slug}`;
+}
+
 /** A sentence for the user saying why a call failed: the server's own words, or a hint when it was not reached. */
 export function explain(error: Error): string {
   if (error instanceof ApiError && error.problem) return error.problem.detail ?? error.problem.title;

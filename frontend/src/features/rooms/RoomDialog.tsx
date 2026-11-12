@@ -1,7 +1,7 @@
 import { LoaderCircle } from "lucide-react";
 import { type ComponentProps, type FormEvent, forwardRef, useId, useRef, useState } from "react";
 import type { RoomInput } from "@/api/generated";
-import { ApiError, explain } from "@/api/problem";
+import { ApiError, explain, problemType } from "@/api/problem";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -18,7 +18,8 @@ import { cn } from "@/lib/utils";
 import { FailureAlert } from "./FailureAlert";
 
 const NAME_MAX_LENGTH = 100;
-const ROOM_NAME_TAKEN = "urn:room-booking:problem:room-name-taken";
+/** The Contract's `RoomNameTaken` response. */
+const ROOM_NAME_TAKEN = problemType("room-name-taken");
 
 type Field = keyof RoomInput;
 

@@ -25,7 +25,8 @@ import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 @RestController
 class RoomController implements RoomsApi {
 
-    private static final URI ROOM_NAME_TAKEN = URI.create("urn:room-booking:problem:room-name-taken");
+    /** The Contract's {@code RoomNameTaken} response. */
+    private static final URI ROOM_NAME_TAKEN = Problems.type("room-name-taken");
 
     private final RoomCatalogue catalogue;
 

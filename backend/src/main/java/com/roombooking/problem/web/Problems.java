@@ -1,6 +1,7 @@
 package com.roombooking.problem.web;
 
 import com.roombooking.contract.model.FieldError;
+import java.net.URI;
 import java.util.Comparator;
 import java.util.List;
 import org.springframework.http.HttpHeaders;
@@ -19,6 +20,14 @@ public final class Problems {
             Comparator.comparing(FieldError::getField).thenComparing(FieldError::getMessage);
 
     private Problems() {}
+
+    /**
+     * The {@code type} of a Problem for a business rule the client must tell apart, {@code
+     * urn:room-booking:problem:<slug>} (ADR-0003). The Contract names each one in the description of its response.
+     */
+    public static URI type(String slug) {
+        return URI.create("urn:room-booking:problem:" + slug);
+    }
 
     /** A 400 {@code about:blank} Problem listing each offending field, the same shape as a Bean Validation failure. */
     public static ResponseEntity<ProblemDetail> invalid(List<FieldError> errors) {
