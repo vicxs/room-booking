@@ -1,5 +1,10 @@
 # Local development dependencies. The backend starts this file automatically
 # through spring-boot-docker-compose when run with `./mvnw spring-boot:run`.
+#
+# The project name is fixed so every checkout, agent worktrees included, shares
+# this one PostgreSQL. Otherwise Compose names the project after the directory
+# and a worktree starts a second container that cannot bind port 5432.
+name: room-booking
 services:
   postgres:
     image: postgres:17.11-alpine

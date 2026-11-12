@@ -7,7 +7,7 @@ A mock room-booking app that is the test bed for a software factory. Start with 
 | Path | What |
 |---|---|
 | `openapi.yaml` | The Contract: source of truth for the API ([ADR-0002](docs/adr/0002-contract-first-with-openapi.md)) |
-| `backend/` | Java 21, Spring Boot 3.5, Maven, PostgreSQL + Flyway. Package by feature: `<feature>/domain` (plain Java), `web`, `persistence`, enforced by ArchUnit |
+| `backend/` | Java 21, Spring Boot 3.5, Maven, PostgreSQL + Flyway + jOOQ. Package by feature: `<feature>/domain` (plain Java), `web`, `persistence`, enforced by ArchUnit |
 | `frontend/` | React 18, Vite, TypeScript, React Router 6, TanStack Query, Tailwind 3 + shadcn/ui |
 | `compose.yaml` | PostgreSQL for local development |
 
@@ -41,4 +41,4 @@ scripts/tests/factory-metrics.test.sh
 scripts/tests/staged-changes-affect-frontend.test.sh
 ```
 
-The Spring interfaces and the TypeScript client are generated from `openapi.yaml` on every build; never edit or commit them.
+The Spring interfaces and the TypeScript client are generated from `openapi.yaml`, and the jOOQ classes from the Flyway migrations applied to a throwaway PostgreSQL container ([ADR-0004](docs/adr/0004-data-access-with-jooq.md)), on every build; never edit or commit them. The backend build therefore needs Docker.
