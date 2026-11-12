@@ -71,7 +71,8 @@ function RoomForm({ title, description, submitLabel, initialValues, onSave, onSa
     setErrors(({ [field]: _fixed, ...rest }) => rest);
   }
 
-  function show(found: RoomErrors) {
+  /** Shows the errors found, and focuses the first field that has one. */
+  function showErrors(found: RoomErrors) {
     setErrors(found);
     const firstInvalid = (["name", "capacity"] as const).find((field) => found[field]);
     if (firstInvalid) inputs[firstInvalid].current?.focus();
@@ -80,7 +81,7 @@ function RoomForm({ title, description, submitLabel, initialValues, onSave, onSa
   async function submit(event: FormEvent) {
     event.preventDefault();
     const invalid = validate(values);
-    if (Object.keys(invalid).length > 0) return show(invalid);
+    if (Object.keys(invalid).length > 0) return showErrors(invalid);
 
     setSaving(true);
     setErrors({});
@@ -89,7 +90,7 @@ function RoomForm({ title, description, submitLabel, initialValues, onSave, onSa
       onSaved();
     } catch (error) {
       setSaving(false);
-      show(errorsFrom(error));
+      showErrors(errorsFrom(error));
     }
   }
 
