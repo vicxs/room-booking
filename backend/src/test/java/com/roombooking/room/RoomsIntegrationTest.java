@@ -1,11 +1,13 @@
 package com.roombooking.room;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.roombooking.TestcontainersConfiguration;
 import com.roombooking.contract.model.Room;
+import com.roombooking.contract.model.RoomInput;
 import com.roombooking.contract.model.RoomStatus;
 import java.util.List;
 import java.util.Locale;
@@ -44,10 +46,10 @@ class RoomsIntegrationTest {
 
     @Test
     void listsEveryRoomActiveAndDeactivatedSortedByNameIgnoringCase() {
-        UUID delta = givenRoom("Delta", 12, "ACTIVE");
-        UUID alpha = givenRoom("alpha", 4, "ACTIVE");
-        UUID charlie = givenRoom("Charlie", 8, "DEACTIVATED");
-        UUID beta = givenRoom("beta room", 6, "ACTIVE");
+        UUID delta = createRoom("Delta", 12);
+        UUID alpha = createRoom("alpha", 4);
+        UUID charlie = createDeactivatedRoom("Charlie", 8);
+        UUID beta = createRoom("beta room", 6);
 
         ResponseEntity<Room[]> response = http.getForEntity("/api/rooms", Room[].class);
 
@@ -69,10 +71,43 @@ class RoomsIntegrationTest {
     }
 
     @Test
+    void createsAnActiveRoomAndAnswersItWithItsLocation() {
+        ResponseEntity<Room> response = http.postForEntity("/api/rooms", new RoomInput("Sala A", 4), Room.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        Room created = response.getBody();
+        assertThat(created).isNotNull();
+        assertThat(created.getName()).isEqualTo("Sala A");
+        assertThat(created.getCapacity()).isEqualTo(4);
+        assertThat(created.getStatus()).isEqualTo(RoomStatus.ACTIVE);
+        assertThat(response.getHeaders().getLocation()).hasToString("/api/rooms/" + created.getId());
+        assertThat(http.getForEntity("/api/rooms", Room[].class).getBody()).containsExactly(created);
+    }
+
+    @Test
+    void trimsTheNameAtBothEndsAndKeepsItsInnerWhitespaceAsTyped() {
+        Room created = http.postForObject("/api/rooms", new RoomInput("  Sala   B \t", 4), Room.class);
+
+        assertThat(created.getName()).isEqualTo("Sala   B");
+        assertThat(http.getForEntity("/api/rooms", Room[].class).getBody())
+                .extracting(Room::getName)
+                .containsExactly("Sala   B");
+    }
+
+    @Test
+    void rejectsANameThatIsBlankOnceTrimmedAsAValidationError() {
+        ResponseEntity<JsonNode> response =
+                send(HttpMethod.POST, "/api/rooms", "{\"name\": \" \\t \", \"capacity\": 4}");
+
+        JsonNode problem = assertProblem(response, HttpStatus.BAD_REQUEST);
+        assertThat(problem.path("errors")).containsExactly(fieldError("name", "must not be blank"));
+        assertThat(http.getForEntity("/api/rooms", Room[].class).getBody()).isEmpty();
+    }
+
+    @Test
     void answersTheOperationsNotImplementedYetWithA501Problem() {
         String room = "/api/rooms/" + UUID.randomUUID();
 
-        assertProblem(send(HttpMethod.POST, "/api/rooms", VALID_ROOM), HttpStatus.NOT_IMPLEMENTED);
         assertProblem(send(HttpMethod.PUT, room, VALID_ROOM), HttpStatus.NOT_IMPLEMENTED);
         assertProblem(send(HttpMethod.POST, room + "/deactivation", null), HttpStatus.NOT_IMPLEMENTED);
         assertProblem(send(HttpMethod.POST, room + "/reactivation", null), HttpStatus.NOT_IMPLEMENTED);
@@ -124,13 +159,45 @@ class RoomsIntegrationTest {
         assertThat(problem.path("errors")).containsExactly(fieldError("capacity", "must not be null"));
     }
 
-    /**
-     * Rooms cannot be created over HTTP until {@code POST /rooms} is implemented, so they are inserted directly.
-     */
-    private UUID givenRoom(String name, int capacity, String status) {
-        UUID id = UUID.randomUUID();
-        jdbc.sql("insert into room (id, name, capacity, status) values (?, ?, ?, ?)")
-                .params(id, name, capacity, status)
+    @Test
+    void reportsEveryMissingFieldAsAValidationError() {
+        JsonNode problem = assertProblem(send(HttpMethod.POST, "/api/rooms", "{}"), HttpStatus.BAD_REQUEST);
+
+        assertThat(problem.path("errors"))
+                .containsExactly(fieldError("capacity", "must not be null"), fieldError("name", "must not be null"));
+    }
+
+    @Test
+    void rejectsANameAnotherRoomHasIgnoringCase() {
+        createRoom("Sala A", 4);
+
+        ResponseEntity<JsonNode> response =
+                send(HttpMethod.POST, "/api/rooms", "{\"name\": \" sala a \", \"capacity\": 8}");
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(response.getHeaders().getContentType()).isEqualTo(MediaType.APPLICATION_PROBLEM_JSON);
+        JsonNode problem = response.getBody();
+        assertThat(problem).isNotNull();
+        assertThat(problem.path("type").asText()).isEqualTo("urn:room-booking:problem:room-name-taken");
+        assertThat(problem.path("title").asText()).isEqualTo("Room name taken");
+        assertThat(problem.path("status").asInt()).isEqualTo(409);
+        assertThat(problem.path("detail").asText()).isEqualTo("The name \"sala a\" is already taken.");
+        assertThat(http.getForEntity("/api/rooms", Room[].class).getBody())
+                .extracting(Room::getName)
+                .containsExactly("Sala A");
+    }
+
+    private UUID createRoom(String name, int capacity) {
+        ResponseEntity<Room> response = http.postForEntity("/api/rooms", new RoomInput(name, capacity), Room.class);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        return requireNonNull(response.getBody()).getId();
+    }
+
+    /** Rooms cannot be deactivated over HTTP until {@code POST /rooms/{roomId}/deactivation} is implemented. */
+    private UUID createDeactivatedRoom(String name, int capacity) {
+        UUID id = createRoom(name, capacity);
+        jdbc.sql("update room set status = 'DEACTIVATED' where id = ?")
+                .param(id)
                 .update();
         return id;
     }
