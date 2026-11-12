@@ -18,4 +18,9 @@ public record Room(UUID id, String name, int capacity, RoomStatus status) {
     static Room create(String name, int capacity) {
         return new Room(UUID.randomUUID(), name.strip(), capacity, RoomStatus.ACTIVE);
     }
+
+    /** This Room with another name, trimmed like a new Room's, and capacity; its id and status stay as they are. */
+    Room withNameAndCapacity(String name, int capacity) {
+        return new Room(id, name.strip(), capacity, status);
+    }
 }

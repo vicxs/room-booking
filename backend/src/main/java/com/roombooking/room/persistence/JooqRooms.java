@@ -9,6 +9,8 @@ import com.roombooking.room.domain.RoomNameTakenException;
 import com.roombooking.room.domain.RoomStatus;
 import com.roombooking.room.domain.Rooms;
 import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 import org.jooq.DSLContext;
 import org.postgresql.util.PSQLException;
 import org.springframework.dao.DuplicateKeyException;
@@ -32,6 +34,11 @@ class JooqRooms implements Rooms {
     }
 
     @Override
+    public Optional<Room> withId(UUID id) {
+        return db.selectFrom(ROOM).where(ROOM.ID.eq(id)).fetchOptional(JooqRooms::toRoom);
+    }
+
+    @Override
     public boolean nameTakenByAnotherRoom(Room room) {
         return db.fetchExists(ROOM, lower(ROOM.NAME).eq(lower(room.name())).and(ROOM.ID.ne(room.id())));
     }
@@ -45,6 +52,21 @@ class JooqRooms implements Rooms {
                     .set(ROOM.CAPACITY, room.capacity())
                     .set(ROOM.STATUS, room.status().name())
                     .execute();
+        } catch (DuplicateKeyException exception) {
+            if (violates(exception, NAME_UNIQUE_IGNORING_CASE)) throw new RoomNameTakenException(room.name());
+            throw exception;
+        }
+    }
+
+    @Override
+    public Room updateNameAndCapacity(Room room) {
+        try {
+            return db.update(ROOM)
+                    .set(ROOM.NAME, room.name())
+                    .set(ROOM.CAPACITY, room.capacity())
+                    .where(ROOM.ID.eq(room.id()))
+                    .returning()
+                    .fetchSingle(JooqRooms::toRoom);
         } catch (DuplicateKeyException exception) {
             if (violates(exception, NAME_UNIQUE_IGNORING_CASE)) throw new RoomNameTakenException(room.name());
             throw exception;

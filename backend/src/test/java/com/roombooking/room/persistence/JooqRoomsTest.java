@@ -16,7 +16,7 @@ import org.springframework.dao.DataAccessException;
 
 /**
  * What the HTTP tests cannot reach: two requests that both pass the domain's name check before either stores its
- * Room. The second {@code add} then hits the unique index on {@code lower(name)}.
+ * Room. The second {@code add} or {@code updateNameAndCapacity} then hits the unique index on {@code lower(name)}.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @Import(TestcontainersConfiguration.class)
@@ -31,6 +31,18 @@ class JooqRoomsTest {
         rooms.add(activeRoom(UUID.randomUUID(), "Sala " + unique));
 
         assertThatThrownBy(() -> rooms.add(activeRoom(UUID.randomUUID(), "SALA " + unique)))
+                .isInstanceOf(RoomNameTakenException.class)
+                .hasMessage("The name \"SALA " + unique + "\" is already taken.");
+    }
+
+    @Test
+    void reportsARenameToANameStoredConcurrentlyIgnoringCaseAsTaken() {
+        String unique = UUID.randomUUID().toString();
+        rooms.add(activeRoom(UUID.randomUUID(), "Sala " + unique));
+        UUID renamed = UUID.randomUUID();
+        rooms.add(activeRoom(renamed, "Other " + unique));
+
+        assertThatThrownBy(() -> rooms.updateNameAndCapacity(activeRoom(renamed, "SALA " + unique)))
                 .isInstanceOf(RoomNameTakenException.class)
                 .hasMessage("The name \"SALA " + unique + "\" is already taken.");
     }
