@@ -193,17 +193,23 @@ function validate({ name, capacity }: RoomValues): RoomErrors {
   return errors;
 }
 
-/** Places each error the server answered next to its field, and anything else in the general message. */
+/**
+ * Places each error the server answered next to its field. Errors about other fields go in the general message, named
+ * after their field; any other failure, or one without field errors, is explained there too.
+ */
 function errorsFrom(error: unknown): RoomErrors {
   if (!(error instanceof Error)) return { general: "Something went wrong." };
   const problem = error instanceof ApiError ? error.problem : undefined;
   if (problem?.type === ROOM_NAME_TAKEN) return { name: problem.detail ?? problem.title };
 
   const errors: RoomErrors = {};
+  const otherFields: string[] = [];
   for (const { field, message } of problem?.errors ?? []) {
     if (isField(field)) errors[field] = message;
+    else otherFields.push(`${field}: ${message}`);
   }
-  if (Object.keys(errors).length === 0) errors.general = explain(error);
+  if (otherFields.length > 0) errors.general = otherFields.join("; ");
+  else if (Object.keys(errors).length === 0) errors.general = explain(error);
   return errors;
 }
 

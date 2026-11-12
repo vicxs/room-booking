@@ -235,6 +235,36 @@ describe("creating a room", () => {
     expect(within(dialog).getByLabelText("Capacity")).toHaveValue(4);
   });
 
+  test("shows an error the server reports for a field the dialog lacks in the general message", async () => {
+    serverReplies(
+      json(200, []),
+      json(
+        400,
+        {
+          type: "about:blank",
+          title: "Bad Request",
+          status: 400,
+          detail: "Invalid request content.",
+          errors: [
+            { field: "floor", message: "must not be null" },
+            { field: "name", message: "must not be blank" },
+          ],
+        },
+        "application/problem+json",
+      ),
+    );
+    const dialog = await fillNewRoomDialog("Sala A", "4");
+
+    await userEvent.click(within(dialog).getByRole("button", { name: "Create room" }));
+
+    const alert = await within(dialog).findByRole("alert");
+    expect(alert).toHaveTextContent("The room could not be saved");
+    expect(alert).toHaveTextContent("floor: must not be null");
+    expect(alert).not.toHaveTextContent("must not be blank");
+    expect(within(dialog).getByLabelText("Name")).toHaveAccessibleDescription("must not be blank");
+    expect(within(dialog).getByLabelText("Name")).toHaveFocus();
+  });
+
   test("shows a taken name under the name field, keeping the input", async () => {
     serverReplies(
       json(200, []),
