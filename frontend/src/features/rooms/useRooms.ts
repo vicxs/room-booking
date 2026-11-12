@@ -11,39 +11,36 @@ export function useRooms() {
   return useQuery({ queryKey: roomsQueryKey, queryFn: () => callApi(() => roomsApi.listRooms()) });
 }
 
-/** Creates an active Room. It settles once the list has been refetched, so the new Room is already in it. */
+/** Creates an active Room. */
 export function useCreateRoom() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (roomInput: RoomInput) => callApi(() => roomsApi.createRoom({ roomInput })),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: roomsQueryKey }),
-  });
+  return useRoomsMutation((roomInput: RoomInput) => roomsApi.createRoom({ roomInput }));
 }
 
-/** Replaces a Room's name and capacity. It settles once the list has been refetched, so the list shows the edit. */
+/** Replaces a Room's name and capacity. */
 export function useUpdateRoom() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, input }: { id: string; input: RoomInput }) =>
-      callApi(() => roomsApi.updateRoom({ roomId: id, roomInput: input })),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: roomsQueryKey }),
-  });
+  return useRoomsMutation(({ id, input }: { id: string; input: RoomInput }) =>
+    roomsApi.updateRoom({ roomId: id, roomInput: input }),
+  );
 }
 
-/** Takes a Room out of service. It settles once the list has been refetched, so the list shows it deactivated. */
+/** Takes a Room out of service. */
 export function useDeactivateRoom() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (room: Room) => callApi(() => roomsApi.deactivateRoom({ roomId: room.id })),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: roomsQueryKey }),
-  });
+  return useRoomsMutation((room: Room) => roomsApi.deactivateRoom({ roomId: room.id }));
 }
 
-/** Brings a Room back into service. It settles once the list has been refetched, so the list shows it active. */
+/** Brings a Room back into service. */
 export function useReactivateRoom() {
+  return useRoomsMutation((room: Room) => roomsApi.reactivateRoom({ roomId: room.id }));
+}
+
+/**
+ * A change to the Rooms through the API. It settles once the list has been refetched, so whoever awaits it, such as a
+ * dialog that closes on success, finds the change already in the list.
+ */
+function useRoomsMutation<TVariables, TData>(call: (variables: TVariables) => Promise<TData>) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (room: Room) => callApi(() => roomsApi.reactivateRoom({ roomId: room.id })),
+    mutationFn: (variables: TVariables) => callApi(() => call(variables)),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: roomsQueryKey }),
   });
 }
